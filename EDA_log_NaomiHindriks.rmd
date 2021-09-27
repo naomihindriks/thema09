@@ -1,0 +1,347 @@
+---
+title: "Thema 9 Log: Breast Cancer Wisconsin (Original) Data Set"
+author: "Naomi Hindriks"
+date: "9/21/2021"
+output:
+  pdf_document:
+    fig_caption: yes
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(ggfortify)
+library(ggalt)
+library(ggcorrplot)
+```
+
+## EDA : Breast Cancer Wisconsin (Original) Data Set
+
+### Data description
+
+The data set: **Breast Cancer Wisconsin (Original) Data Set** is downloaded from the [UCI machine learning repository](https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Original%29). The data were collected by the University of Wisconsin Hospitals, Madison by Dr. William H. Wolberg.
+
+The UCI website states that the data set contains 699 instances. According to the corresponding *breast-cancer-wisconsin.names* file (also downloaded from the UCI website) each instance is made up of 10 attributes, plus the class attribute. More detailed information of these attributes is shown in Table 1. The information found in Table 1 is a combination of information that was found in the *breast-cancer-wisconsin.names* file and [User Manual Breast Cancer Diagnosis Web User Interface](https://www.rai-light.com/docs/BCD_User_Manual_v01.pdf) that includes an explanation on how to score the cytological characteristic.
+
+According to the *breast-cancer-wisconsin.names* file there are 16 instances that contain a single missing attribute value, these are represented by "?" characters in the data file. It also states that out of the 699 instances there are 458 (65.5%) classified as benign and 241 (34.5%) classified as malignant.
+
+To ensure the continued availability of the data and names files, they were copied to a personal [repository](https://github.com/naomihindriks/thema09).
+
+
+```{r load-attribute-info}
+attribute.info <- read.csv("attribute_info.csv", sep=";") 
+
+attribute.info.temp <- data.frame(
+  "Column" = attribute.info$column, 
+  "Attribute" = attribute.info$full.name,
+  "Unit" = attribute.info$unit,
+  "Description" = attribute.info$description
+  )
+
+kbl(
+    attribute.info.temp, 
+    row.names = F, 
+    caption = "Attribute Information. The cytological characteristics of breast FNAs (seen in rows 2-10) get a score from 1 to 10 by an examining physician with 1 being the closest to benign and 10 the most anaplastic.", 
+    booktabs = T, 
+    linesep = "",
+    longtable = T
+  ) %>%
+  kable_styling(latex_options = c("striped")) %>%
+  column_spec(1:3, width = "1.5cm") %>%
+  column_spec(4, width = "10cm")
+
+#clean up environment
+remove(attribute.info.temp)
+```
+
+### Data loading and prepping
+
+```{r load-data}
+data <- read.table(file = 'data/breast-cancer-wisconsin.data',
+                                     header = F,
+                                     sep = ",",
+                                     na.strings = '?')
+
+str(data)
+
+```
+
+The data has been loaded, but it can be seen that the column names were not included in the data file. Furthermore the data does not seem to be of the correct data type, columns 2-10 should all be (ordered) factors. 
+To give the columns the correct names and have easy access to the column descriptions I have created a simple csv file (attribute_info.csv).
+
+```{r change-data-names-types}
+names(data) <- attribute.info$name
+
+data$class <- factor(data$class, levels = c(2, 4), labels = c("Benign", "Malignant"))
+
+for(col.name in names(data)[2:10]) {
+  data[, col.name] <- factor(data[, col.name], levels=1:10, ordered=T)
+}
+
+str(data)
+
+#clean up environment
+remove(col.name)
+```
+
+Now the columns have names and the values are of the correct data type.
+
+### Data verification
+
+The original data description stated that 699 instances with 10 attributes + a class label are present.
+
+```{r inspect-data-dim}
+dim(data)
+```
+
+This checks out. The original data description also stated that there are 16 instances with a single missing value, the instances that have a mising value will be removed from the data set. This means there are no more than 16 missing values and the number of complete cases should be 699 - 16.
+
+```{r inspect-missing-data}
+sum(is.na(data))
+
+complete.instances <- complete.cases(data)
+
+699 - sum(complete.instances)
+```
+
+This is correct. According to the original data description the class distribution is as follows: benign: 458 (65.5%), malignant: 241 (34.5%).
+
+```{r inspect-class-distribution}
+summary(data$class)
+
+format(summary(data$class) / nrow(data) * 100, digits = 3)
+```
+Again this checks out. The last thing that I am going to check are the *Sample code numbers* of instances. The data original description stated that this is an id number, therefore I assume all of these numbers should be unique.
+
+```{r inspect-unique-data}
+length(unique(data$id))
+```
+The number of unique *sample code numbers* is 645, which is less than the 699 instances in the data. This is odd and requires further investigation. According to the original data description the data set is divided in 8 different groups, each group being collected in a different period of time. The groups 1 to 8 contain 367, 70, 31, 17, 48, 49, 31 and 86 instances respectively. Perhaps the *sample code numbers* of the instances are unique within their group.
+
+```{r inspect-duplicated-data-per-group}
+group.sizes <- c(367, 70, 31, 17, 48, 49, 31, 86)
+duplicates.per.group <- c()
+
+current.slice.start <- 0
+i <- 0
+
+for (group.size in group.sizes) {
+  i <- i + 1
+  group.row.numbers <- (current.slice.start + 1):(current.slice.start + group.size)
+  current.slice.start <- current.slice.start + group.size
+  
+  duplicates <- sum(duplicated(data$id[group.row.numbers]))
+  duplicates.per.group <- c(duplicates.per.group, duplicates)
+  
+  print(paste("Group ", i, ": ", duplicates , sep = ""))
+}
+
+# The total of duplicates when only looking inside group
+sum(duplicates.per.group)
+
+# The total duplicates in and outside group
+nrow(data) - length(unique(data$id))
+
+#clean up environment
+remove(group.sizes, duplicates.per.group, current.slice.start, i, group.size, group.row.numbers, duplicates)
+```
+
+When looking at these numbers it is clear that there are duplicates within the groups and duplicates between different groups. This means that it is not logical that the duplicates are just duplicated rows that somehow got copied an extra time, because if that were the case we would expect to see only duplicates within groups. It is also not logical that the *sample code numbers* are reused in different groups since there are also duplicates within the groups. The next step is to check if the instances with duplicated *sample code numbers* have every attribute duplicated.
+
+
+```{r inspect-duplicated-rows}
+length(data[duplicated(data), ]$id)
+```
+There are 8 rows that are an exact copy of another row, this means that there are instances with the same *sample code number* but different values for the other attributes. Tables 2-47 show the instances that share their *sample code number* with at least one other instance. The tables that have duplicates where every attribute is the same have a red header. 
+
+```{r print-duplicated-data-tables, results='asis'}
+duplicated.ids <- unique(data$id[duplicated(data$id)])
+
+for (duplicate.id in duplicated.ids) {
+  duplicate.entries.temp <- data[data$id == duplicate.id, ]
+  
+  if (sum(duplicated(duplicate.entries.temp)) > 0) {
+    header.color <- "red"
+  } else {
+    header.color <- "white"
+  }
+  
+  table <- kbl(
+    duplicate.entries.temp, 
+    row.names = T, 
+    col.names = attribute.info$full.name,
+    caption = paste("Instances with duplicate id:", duplicate.id), 
+    booktabs = T, 
+    linesep = ""
+  ) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_position")) %>%
+  column_spec(1:11, width = "1.5cm") %>%
+  row_spec(0, background = header.color)
+  
+  print(table)
+}
+
+#clean up environment
+remove(duplicate.entries.temp, table, header.color, duplicated.ids, duplicate.id)
+```
+
+When inspecting these tables it becomes apparent that the duplicated data is sometimes in consecutive rows, but not always. It can also be observed that most of the instances with duplicated *sample code numbers*  have the same class label, but not always. You can also see that most duplicates come in pairs, but they also come in bigger groups, up to 6 instances in one group (see Table 14). I do not see any pattern in how these rows are duplicated, nor can I think of any logical explanation for this. Since I do not want to risk using instances that are from the same person or sample I will keep only one instance per *sample code number*, and remove the duplicated rows.
+
+
+### Removing data
+
+First the instances with a missing value will be removed. After that the instances with a duplicated *sample code number* will be removed.
+
+```{r removing-instances-missing-data}
+# only keep rows with complete instances
+data <- data[complete.instances, ]
+
+# verify 16 instances have been removed
+dim(data)
+
+#clean up environment
+remove(complete.instances)
+```
+After removing the instances with a missing value, there are 683 instances left, which is as expected because 699 - 16 = `r 699 - 16`
+
+```{r removing-instances-duplicated-id}
+# find instances with duplicated id
+duplicates <- duplicated(data$id)
+
+# remove duplicate instances from data
+data <- data[!duplicates, ]
+
+# Making the id the rowname and removing id column
+row.names(data) <- data$id
+data <- data[2:11]
+
+# print what the dimensions are after cleaning the data
+dim(data)
+```
+
+Then after removing the instances with duplicated *sample code numbers* there are 630 instances left, these instances do not have missing values or duplicated *sample code numbers*.
+
+### Exploring variables
+
+A first scan of the attributes.
+
+```{r}
+summary(data)
+```
+
+For all attributes (except the class attribute) the most common value is 1 or 2. This makes sense, the most instances are classified as benign and lower numbers indicate more benign characteristics. I will make bar plots to show the distribution of the cytological characteristic. I chose bar plots for this because the data is ordinal.
+
+
+```{r print-distribution-barplot, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", fig.pos="H"}
+
+plot.list <- list()
+
+for(attr in colnames(data)[1:9]) {
+  new.plot <- ggplot(data, aes_string(x = attr, y = "..prop..", group = 1)) +
+    geom_bar(aes(fill="Both classes"), alpha = 0.8) +
+    geom_bar(aes(fill = class, group = class), position = position_dodge2(preserve = "single"), alpha = 0.8)+
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_fill_manual(
+      name = "Class", 
+      values = c("grey50", hue_pal()(2)), 
+      breaks = c("Both classes", "Benign", "Malignant"), labels = c("Both classes", "Benign", "Malignant")
+    ) +
+    xlab(paste(attribute.info$full.name[attribute.info$name == attr], "scored on a scale from 1 to 10")) + 
+    ylab("Percentage of instances")
+  
+  leg <- get_legend(new.plot)
+  
+  plot.list[[attr]] <- new.plot + theme(legend.position = "none")
+}
+
+plot.list[["leg"]] <- leg
+
+p <- ggarrange(plotlist = plot.list, ncol = 2, nrow = 5)
+annotate_figure(p, top = text_grob("Distribution of cytological characteristics scores", face = "bold", size = 14))
+```
+
+
+\newpage
+
+When looking at the distribution in Figure 1 it seems there is a difference between the benign and malignant samples for every attribute. Next I will make a PCA plot, so we can see if two distinct groups can be seen based on the principle components.  
+
+```{r scree-plot, fig.cap="Explained variance per principle component"}
+df <- data
+
+for(i in 1:9) {
+  df[,i] <- as.numeric(df[,i])
+}
+
+pca.res <- prcomp(df[1:9], scale. = TRUE)
+
+var.explained.df <- data.frame(PC= paste0("PC",1:9), var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2))
+
+ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
+  geom_point(size=4)+
+  geom_line()+
+  labs(title="Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set") +
+  ylab("Variance explained") +
+  xlab("Principal component")
+```
+
+In the scree plot in *Figure 2* we see a good difference between the variance explained by principle component 1 and the rest. Next I will make a table in which you can see how much every cytological characteristic contributes to the principle components.
+
+
+```{r table-attributes-contribution-to-principle-components}
+row.names(pca.res$rotation) <- attribute.info$full.name[2:10]
+
+kbl(
+    pca.res$rotation,
+    caption = "PCA: loadings of the 9 cytological characteristics to each principle component", 
+    booktabs = T, 
+    linesep = ""
+  ) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_position")) %>%
+  column_spec(1:9, width = "2cm")
+
+df.pca <- data.frame(pca.res$x, class=data$class)
+df.benign <- df.pca[df.pca$class == "Benign", ] 
+df.malignant <- df.pca[df.pca$class == "Malignant", ] 
+```
+
+In *Table 48* can be seen that the different cytological characteristics contribute quite similarly to principle component 1. There is not one cytological characteristics that clearly contributes most. Although mitoses contributes a bit less to this component, it contributes a lot more to principle component 2. Next I will make a plot of principle component 1 and 2.
+
+```{r principle-component-plot, fig.cap="Principle component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)"}
+ggplot(df.pca, aes(PC1, PC2, col=class)) + 
+  geom_point() +
+  coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
+                  ylim = 1.2 * c(min(df.pca$PC2), max(df.pca$PC2))) +
+  geom_encircle(data = df.benign) +
+  geom_encircle(data = df.malignant) +
+  xlab("Principal component 1") + 
+  ylab("Principal component 2") +
+  labs(title = "Principal component analysis on Breast Cancer Wisconsin (Original) Data Set")
+```
+
+\newpage
+
+In the plot in *Figure 3* you can see that some separation between the benign and malignant instances, but there is still quite some overlap as well. They are not two completely distinct groups based on principle component 1 and principle component 2. 
+
+```{r, include=FALSE}
+df <- data
+
+for(i in 1:9) {
+  df[,i] <- as.numeric(df[,i])
+}
+
+
+x <- ggcorrplot(cor(df[,1:9]),
+                hc.order = T, 
+                p.mat = cor_pmat(df[,1:9]))
+
+x
+
+
+```
+

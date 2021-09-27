@@ -1,0 +1,12 @@
+column;full.name;name;data.type;unit;description
+1;Sample code number;id;int;id number;Unique number given to each sample
+2;Clump Thickness;clump.thick;factor;1-10;Assesses if cells are mono or multi-layered
+3;Uniformity of Cell Size;uni.cell.size;factor;1-10;Evaluate the consistency in size of the cells in the sample
+4;Uniformity of Cell Shape;uni.cell.shape;factor;1-10;Evaluate the consistency in shape of the cells in the sample
+5;Marginal Adhesion;marg.adhesion;factor;1-10;Quantifies proportion of cells that stick together
+6;Single Epithelial Cell Size;single.epith.cell.size;factor;1-10;Measures the enlargement of epithelial cells size 
+7;Bare Nuclei;bare.nuclei;factor;1-10;Proportion of nuclei surrounded by cytoplasm versus those that are not
+8;Bland Chromatin;bland.chrom;factor;1-10;Rates the uniform "texture" of the nucleus in a range from fine to coarse
+9;Normal Nucleoli;norm.nucleoli;factor;1-10;Determines whether the nucleoli are small and barely visible or larger, more visible, and more plentiful
+10;Mitoses;mitoses;factor;1-10;Describes the level of mitotic activity
+11;Class;class;factor;2 or 4;Classification: 2 for benign and 4 for malignant
