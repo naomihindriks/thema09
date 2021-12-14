@@ -3,9 +3,13 @@ title: "Thema 9 Log: Breast Cancer Wisconsin (Original) Data Set"
 author: "Naomi Hindriks"
 date: "9/21/2021"
 output:
-  pdf_document:
-    fig_caption: yes
+  bookdown::pdf_document2:
+    toc: false
+    number_sections: false
 urlcolor: blue
+header-includes:
+ \usepackage{float}
+ \floatplacement{figure}{H}
 ---
 
 ```{r setup, include=FALSE}
@@ -19,6 +23,9 @@ library(scales)
 library(ggfortify)
 library(ggalt)
 library(ggcorrplot)
+library(forcats)
+library(caret)
+library(patchwork)
 ```
 
 ## EDA : Breast Cancer Wisconsin (Original) Data Set
@@ -149,14 +156,16 @@ sum(duplicates.per.group)
 nrow(data) - length(unique(data$id))
 
 #clean up environment
-remove(group.sizes, duplicates.per.group, current.slice.start, i, group.size, group.row.numbers, duplicates)
+remove(group.sizes, duplicates.per.group, 
+       current.slice.start, i, group.size, 
+       group.row.numbers, duplicates)
 ```
 
 When looking at these numbers it is clear that there are duplicates within the groups and duplicates between different groups. This means that it is not logical that the duplicates are just duplicated rows that somehow got copied an extra time, because if that were the case we would expect to see only duplicates within groups. It is also not logical that the *sample code numbers* are reused in different groups since there are also duplicates within the groups. The next step is to check if the instances with duplicated *sample code numbers* have every attribute duplicated.
 
 
 ```{r inspect-duplicated-rows}
-length(data[duplicated(data), ]$id)
+nrow(data[duplicated(data), ])
 ```
 There are 8 rows that are an exact copy of another row, this means that there are instances with the same *sample code number* but different values for the other attributes. Tables 2-47 show the instances that share their *sample code number* with at least one other instance. The tables that have duplicates where every attribute is the same have a red header. 
 
@@ -199,6 +208,9 @@ When inspecting these tables it becomes apparent that the duplicated data is som
 First the instances with a missing value will be removed. After that the instances with a duplicated *sample code number* will be removed.
 
 ```{r removing-instances-missing-data}
+# Keep unfiltered data in variable
+unfiltered.data <- data
+
 # only keep rows with complete instances
 data <- data[complete.instances, ]
 
@@ -211,6 +223,7 @@ remove(complete.instances)
 After removing the instances with a missing value, there are 683 instances left, which is as expected because 699 - 16 = `r 699 - 16`
 
 ```{r removing-instances-duplicated-id}
+
 # find instances with duplicated id
 duplicates <- duplicated(data$id)
 
@@ -235,24 +248,83 @@ A first scan of the attributes.
 summary(data)
 ```
 
-For all attributes (except the class attribute) the most common value is 1 or 2. This makes sense, the most instances are classified as benign and lower numbers indicate more benign characteristics. I will make bar plots to show the distribution of the cytological characteristic. I chose bar plots for this because the data is ordinal.
+For all attributes (except the class attribute) the most common value is 1 or 2. This makes sense, the most instances are classified as benign and lower numbers indicate more benign characteristics. Now I will make a table and bargraph to compare the class distribution before and after the filtering.
+
+```{r class-distribution-before-vs-after }
+class.distribution <- data.frame(
+  filtered = c(rep("before", nrow(unfiltered.data)), rep("after", nrow(data))), 
+  class = c(as.character(unfiltered.data$class), as.character(data$class)))
 
 
-```{r print-distribution-barplot, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", fig.pos="H"}
+d1 <-  class.distribution %>% group_by(filtered, class) %>%             
+  tally %>% 
+  bind_rows(class.distribution %>% group_by(filtered) %>%
+      tally %>%
+      mutate(class="Total")) %>%
+  mutate(pct = round(n/((sum(n)/2))*100)) %>%
+  arrange(desc(filtered))
+
+d1
+
+kbl(
+  d1[,2:4],
+  caption = "Data distribution before and after filtering, n is the number of instances and pct is the percentage of instances.") %>%
+  kable_styling(latex_options = c("HOLD_position")) %>%
+  pack_rows(index = table(fct_inorder(d1$filtered)))
+
+```
+
+```{r class-distribution-bargraph, fig.cap="Distribution of the class attribute of the data before and after the filtering steps (the filtering steps are: removing rows with missing data, and than removing duplicated sample code numbers). The numbers in the bars are the actual number of instances in the data set."}
+ggplot(class.distribution, aes_string(x = "class", y = "..prop..")) +
+  geom_bar(
+    aes(fill = factor(filtered), group = -as.numeric(factor(filtered))), 
+      position = position_dodge()
+      ) + 
+  geom_text(
+    aes(label = ..count.., group = -as.numeric(factor(filtered))), 
+    stat = "count", 
+    position = position_dodge(width = 0.9),
+    vjust = 2) +
+  scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(
+      name = "Data set", 
+      values = c(hue_pal()(2)), 
+      breaks = c("before", "after"), 
+      labels = c("Data before filtering", "Data after filtering")) +
+  labs(title="Class distribution before and after filtering of the data set") +
+  xlab("Class") +
+  ylab("Pecentage of data set")
+```
+
+
+I will make bar plots to show the distribution of the cytological characteristic. I chose bar plots for this because the data is ordinal.
+
+
+```{r , fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", include=FALSE}
 
 plot.list <- list()
 
 for(attr in colnames(data)[1:9]) {
   new.plot <- ggplot(data, aes_string(x = attr, y = "..prop..", group = 1)) +
     geom_bar(aes(fill="Both classes"), alpha = 0.8) +
-    geom_bar(aes(fill = class, group = class), position = position_dodge2(preserve = "single"), alpha = 0.8)+
+    geom_bar(
+      aes(fill = class, group = class), 
+      position = position_dodge2(preserve = "single"), 
+      alpha = 0.8
+      ) +
     scale_y_continuous(labels = scales::percent_format()) +
     scale_fill_manual(
       name = "Class", 
       values = c("grey50", hue_pal()(2)), 
-      breaks = c("Both classes", "Benign", "Malignant"), labels = c("Both classes", "Benign", "Malignant")
+      breaks = c("Both classes", "Benign", "Malignant"), 
+      labels = c("Both classes", "Benign", "Malignant")
     ) +
-    xlab(paste(attribute.info$full.name[attribute.info$name == attr], "scored on a scale from 1 to 10")) + 
+    xlab(
+      paste(
+        attribute.info$full.name[attribute.info$name == attr], 
+        "scored on a scale from 1 to 10"
+        )
+      ) + 
     ylab("Percentage of instances")
   
   leg <- get_legend(new.plot)
@@ -263,24 +335,422 @@ for(attr in colnames(data)[1:9]) {
 plot.list[["leg"]] <- leg
 
 p <- ggarrange(plotlist = plot.list, ncol = 2, nrow = 5)
-annotate_figure(p, top = text_grob("Distribution of cytological characteristics scores", face = "bold", size = 14))
+
+annotate_figure(
+  p, 
+  top = text_grob(
+    "Distribution of cytological characteristics scores", 
+    face = "bold", 
+    size = 14
+  )
+)
 ```
 
 
-\newpage
+```{r attr-distribution-barplot-old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", include=F}
+long.data <- pivot_longer(data, 1:9)
 
-When looking at the distribution in Figure 1 it seems there is a difference between the benign and malignant samples for every attribute. Next I will make a PCA plot, so we can see if two distinct groups can be seen based on the principle components.  
+names.labs <- attribute.info$full.name
+names(names.labs) <- attribute.info$name
 
-```{r scree-plot, fig.cap="Explained variance per principle component"}
+ggplot(long.data, aes_string(x = 'value', y = "..prop..", group = 1)) +
+  geom_bar(aes(fill="Both classes")) +
+  geom_bar(
+    aes(fill = class, group = class), 
+    position = position_dodge2(preserve = "single"), 
+    alpha = 0.8
+    ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_fill_manual(
+    name = "Class", 
+    values = c("grey50", hue_pal()(2)), 
+    breaks = c("Both classes", "Benign", "Malignant"), 
+    labels = c("Both classes", "Benign", "Malignant")
+  ) +
+  labs(
+    title="Distribution of cytological characteristics scores",
+    x ="Score on a scale from 1 to 10", 
+    y = "Percentage of instances"
+    ) +
+  facet_wrap(. ~ name, scales = "free", ncol = 2, labeller = labeller(name = names.labs)) +
+  theme(legend.position = c(0.75, 1/8), legend.direction = "horizontal")
+  #    ) + 
+
+```
+
+```{r attr-distribution-barplot, fig.height=10, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together"}
+long.data <- pivot_longer(data, 1:9)
+
+names.labs <- attribute.info$full.name
+names(names.labs) <- attribute.info$name
+
+ggplot(long.data, aes(x=value)) +
+  geom_bar(aes(y = ..prop.., fill = name, group = class), stat="count") +
+  labs(y = "Percent", fill="Attribute") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_discrete(
+    name = "Attribute", 
+    breaks = sort(attribute.info$name),
+    labels = attribute.info$full.name[order(attribute.info$name)]
+    ) +
+  labs(
+    title="Distribution of cytological characteristics scores",
+    x ="Score on a scale from 1 to 10", 
+    y = "Percentage of instances"
+    ) +
+  facet_grid(name ~ class, scales = "free", margin = "class", labeller = labeller(name = names.labs)) +
+  theme(legend.position = "bottom", strip.text.y = element_blank())
+
+```
+
+
+```{r, fig.height=12, fig.width=10, include=F}
 df <- data
 
 for(i in 1:9) {
   df[,i] <- as.numeric(df[,i])
 }
 
+long.df <- pivot_longer(df, 1:9)
+
+long.df2 <- long.df %>%
+  mutate(class_ = factor(class))
+
+ggplot(long.df2, aes(x=value)) +
+  geom_bar(aes(y = ..prop.., fill = class), stat="count") +
+  labs(y = "Percent", fill="Class") +
+  scale_y_continuous(labels = scales::percent) +
+  facet_grid(name ~ class_, scales = "free", margin = "class_") +
+  theme(legend.position = "bottom")
+```
+
+
+```{r, fig.height=12, fig.width=10, include=F}
+
+preproc1 <- preProcess(df[,c(1:9)], method=c("center","scale"))
+norm1 <- predict(preproc1, df)
+norm1.long <-  pivot_longer(norm1, 1:9)
+
+ggplot(long.df, aes(x = value)) +
+  geom_density(aes(fill=name)) +
+  facet_grid(name ~ class, margin = "class")
+
+ggplot(norm1.long, aes(x = value)) +
+  geom_density(aes(fill=name)) +
+  facet_grid(name ~ class, margin = "class")
+```
+
+\newpage
+
+When looking at the distribution in Figure \@ref(fig:attr-distribution-barplot) it seems there is a difference between the benign and malignant samples for every attribute. Now I will look at the correlation between the different attributes.  
+
+```{r attr-correlation-plot, fig.cap="Correlations between the attributes"}
+df <- data
+
+for(i in 1:9) {
+  df[,i] <- as.numeric(df[,i])
+}
+colnames(df) <- attribute.info$full.name[-1]
+
+# Calculate  p values for correlation coefficients
+correlation.p.values <- cor_pmat(df[,1:9])
+
+# Plot correlation coefficients for attributes
+ggcorrplot(
+  cor(df[,1:9]),
+  type = "lower", 
+  outline.col = "white",
+  lab = TRUE,
+  p.mat = cor_pmat(df[,1:9])
+) +
+  ggtitle("Correlation between the attributes")
+```
+
+
+```{r attr-correlation-p-value-table}
+# Print p values in table
+kbl(
+  correlation.p.values,
+  booktabs = T,
+  digits = 20
+) %>%
+  column_spec(1:10, width = "1.3cm") %>%
+  column_spec(c(2, 7, 8, 10), width = "2,5cm") %>%
+  kable_styling(latex_options = c("HOLD_position", "striped", "scale_down"))
+```
+
+Next I will conduct principal component analysis, so we can see if two distinct groups can be seen based on the principal components.
+
+```{r variance-per-attr}
+vars <- apply(data[c(-ncol(data))], 2, var)
+attr.names <- attribute.info[attribute.info$name %in% names(vars),][,c("full.name", "name")]
+
+var.per.attr.df = data.frame(attr.name = attr.names$full.name, vars = vars[attr.names$name])
+
+kbl(
+  var.per.attr.df,
+  caption = "Variance per attribute",
+  row.names = F,
+  col.names = c("Attribute", "Variance"),
+  booktabs = T,
+  linesep = "",
+  digits = 3) %>%
+  kable_styling(latex_options = c("striped", "HOLD_position")) %>%
+  column_spec(1:2, width = "7cm")
+```
+
+```{r scree-pca-plots-old, fig.height=12, fig.width=10, fig.cap="Principal component analyses", include=F}
+df <- data
+
+for(i in 1:9) {
+  df[,i] <- as.numeric(df[,i])
+}
+
+scaled_options = c(TRUE, FALSE)
+centered_options = c(TRUE, FALSE)
+
+pca.list = list()
+plot.list = list()
+
+for(scaled_option in  scaled_options) {
+  for(centered_option in centered_options) {
+    # Get principal components
+    pca.res <- prcomp(df[1:9], scale. = scaled_option, center = centered_option)
+    pca.list[[paste("scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- pca.res
+    
+    # Calculate explained variance
+    var.explained.df <- data.frame(
+      PC= paste0("PC",1:9), 
+      var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2)
+    )
+
+    # Plot explained variance for PC's
+    new.scree.plot <- ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
+      geom_point(size=4)+
+      geom_line()+
+      #labs(title=paste("Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", Centered = ", centered_option, sep = "")) +
+      ylab("Variance explained") +
+      xlab("Principal component")
+    
+    # Get points to plot in PCA plot
+    df.pca <- data.frame(pca.res$x, class=data$class)
+    df.benign <- df.pca[df.pca$class == "Benign", ] 
+    df.malignant <- df.pca[df.pca$class == "Malignant", ]
+    
+    # PCA plot
+    new.pca.plot <- ggplot(df.pca, aes(PC1, PC2, col=class)) + 
+      geom_point() +
+      coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
+                      ylim = 1.2 * c(min(df.pca$PC2), max(df.pca$PC2))) +
+      geom_encircle(data = df.benign) +
+      geom_encircle(data = df.malignant) +
+      xlab("Principal component 1") + 
+      ylab("Principal component 2") + 
+      theme(legend.direction = "horizontal", legend.background = element_rect(linetype = "solid", size = 1))
+      #labs(title = paste("Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", Centered = ", centered_option, sep = ""))
+    
+    leg <- get_legend(new.pca.plot)
+    new.pca.plot <- new.pca.plot + theme(legend.position = "none")
+    
+    plot.list[[paste("scree.plot.scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- new.scree.plot
+    
+    plot.list[[paste("pca.plot.scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- new.pca.plot
+  }
+}
+
+# Add legend to plotlist
+plot.list[["leg"]] <- leg
+
+# Titles for rows and columns wrapped plot
+row1 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = TRUE\nCentered = TRUE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void() 
+row2 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = TRUE\nCentered = FALSE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void() 
+row3 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = FALSE\nCentered = TRUE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void() 
+row4 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = FALSE\nCentered = FALSE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void() 
+col1 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Explained variance", 
+    size = 5.5,
+    fontface = 2) + 
+  theme_void() 
+col2 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="PCA plot", 
+    size = 5.5,
+    fontface = 2) + 
+  theme_void() 
+
+title.list <- list(a = row1, b = row2, c = row3, d = row4, e = col1, f = col2)
+
+layoutplot <- "
+#eeeeffff
+agggghhhh
+agggghhhh
+agggghhhh
+biiiijjjj
+biiiijjjj
+biiiijjjj
+ckkkkllll
+ckkkkllll
+ckkkkllll
+dmmmmnnnn
+dmmmmnnnn
+dmmmmnnnn
+#####oooo
+"
+
+wrap_plots(plotlist = c(title.list, plot.list), guides = 'collect', design = layoutplot)
+```
+
+
+```{r scree-pca-plots, fig.height=10, fig.width=10, fig.cap="Principal component analyses"}
+scaled_options = c(TRUE, FALSE)
+
+pca.list = list()
+plot.list = list()
+
+for(scaled_option in  scaled_options) {
+  # Get principal components
+  pca.res <- prcomp(df[1:9], scale. = scaled_option, center = TRUE)
+  pca.list[[paste("scaled.", scaled_option, sep = "")]] <- pca.res
+  
+  # Calculate explained variance
+  var.explained.df <- data.frame(
+    PC= paste0("PC",1:9), 
+    var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2)
+  )
+
+  # Plot explained variance for PC's
+  new.scree.plot <- ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
+    geom_point(size=4)+
+    geom_line()+
+    #labs(title=paste("Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", sep = "")) +
+    ylab("Variance explained") +
+    xlab("Principal component")
+  
+  # Get points to plot in PCA plot
+  df.pca <- data.frame(pca.res$x, class=data$class)
+  df.benign <- df.pca[df.pca$class == "Benign", ] 
+  df.malignant <- df.pca[df.pca$class == "Malignant", ]
+  
+  # PCA plot
+  new.pca.plot <- ggplot(df.pca, aes(PC1, PC2, col=class)) + 
+    geom_point() +
+    coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
+                    ylim = 1.2 * c(min(df.pca$PC2), max(df.pca$PC2))) +
+    geom_encircle(data = df.benign) +
+    geom_encircle(data = df.malignant) +
+    xlab("Principal component 1") + 
+    ylab("Principal component 2") + 
+    theme(legend.direction = "horizontal", legend.background = element_rect(linetype = "solid", size = 1))
+    #labs(title = paste("Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, sep = ""))
+  
+  leg <- get_legend(new.pca.plot)
+  new.pca.plot <- new.pca.plot + theme(legend.position = "none")
+  
+  plot.list[[paste("scree.plot.scaled.", scaled_option, sep = "")]] <- new.scree.plot
+  
+  plot.list[[paste("pca.plot.scaled.", scaled_option, sep = "")]] <- new.pca.plot
+
+}
+
+# Add legend to plotlist
+plot.list[["leg"]] <- leg
+
+# Titles for rows and columns wrapped plot
+row1 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = TRUE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void() 
+row2 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Scaled = FALSE", 
+    angle = 90, 
+    size = 5,
+    fontface = 2) + 
+  theme_void()
+col1 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="Explained variance", 
+    size = 5.5,
+    fontface = 2) + 
+  theme_void() 
+col2 <- ggplot() + 
+  annotate(
+    geom = 'text', 
+    x=1, y=1, 
+    label="PCA plot", 
+    size = 5.5,
+    fontface = 2) + 
+  theme_void() 
+
+title.list <- list(a = row1, b = row2, e = col1, f = col2)
+
+layoutplot <- "
+#ccccdddd
+aeeeeffff
+aeeeeffff
+aeeeeffff
+bgggghhhh
+bgggghhhh
+bgggghhhh
+#####oooo
+"
+
+wrap_plots(plotlist = c(title.list, plot.list), guides = 'collect', design = layoutplot)
+```
+
+```{r scree-plot, fig.cap="Explained variance per principal component", include=F}
 pca.res <- prcomp(df[1:9], scale. = TRUE)
 
-var.explained.df <- data.frame(PC= paste0("PC",1:9), var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2))
+var.explained.df <- data.frame(
+  PC= paste0("PC",1:9), 
+  var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2)
+)
 
 ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
   geom_point(size=4)+
@@ -290,15 +760,15 @@ ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
   xlab("Principal component")
 ```
 
-In the scree plot in *Figure 2* we see a good difference between the variance explained by principle component 1 and the rest. Next I will make a table in which you can see how much every cytological characteristic contributes to the principle components.
+In the scree plot in Figure \@ref(fig:scree-pca-plots) we see a good difference between the variance explained by principal component 1 and the rest. Next I will make a table in which you can see how much every cytological characteristic contributes to the principal components.
 
 
-```{r table-attributes-contribution-to-principle-components}
+```{r table-attributes-contribution-to-principal-components}
 row.names(pca.res$rotation) <- attribute.info$full.name[2:10]
 
 kbl(
     pca.res$rotation,
-    caption = "PCA: loadings of the 9 cytological characteristics to each principle component", 
+    caption = "PCA: loadings of the 9 cytological characteristics to each principal component", 
     booktabs = T, 
     linesep = ""
   ) %>%
@@ -310,9 +780,11 @@ df.benign <- df.pca[df.pca$class == "Benign", ]
 df.malignant <- df.pca[df.pca$class == "Malignant", ] 
 ```
 
-In *Table 48* can be seen that the different cytological characteristics contribute quite similarly to principle component 1. There is not one cytological characteristics that clearly contributes most. Although mitoses contributes a bit less to this component, it contributes a lot more to principle component 2. Next I will make a plot of principle component 1 and 2.
+In *Table \@ref(tab:table-attributes-contribution-to-principal-components)* can be seen that the different cytological characteristics contribute quite similarly to principal component 1. There is not one cytological characteristics that clearly contributes most. Although mitoses contributes a bit less to this component, it contributes a lot more to principal component 2. Next I will make a plot of principal component 1 and 2.
 
-```{r principle-component-plot, fig.cap="Principle component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)"}
+```{r principal-component-plot1, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)", include=F}
+
+# Scaled + centered
 ggplot(df.pca, aes(PC1, PC2, col=class)) + 
   geom_point() +
   coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
@@ -321,27 +793,48 @@ ggplot(df.pca, aes(PC1, PC2, col=class)) +
   geom_encircle(data = df.malignant) +
   xlab("Principal component 1") + 
   ylab("Principal component 2") +
-  labs(title = "Principal component analysis on Breast Cancer Wisconsin (Original) Data Set")
+  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
+```
+
+```{r principal-component-plot2, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)",  include=F}
+
+# Unscaled + centered
+pca.res.unscaled <- prcomp(df[1:9], scale. = FALSE, center = TRUE)
+df.pca.unscaled <- data.frame(pca.res.unscaled$x, class=data$class)
+df.benign.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Benign", ] 
+df.malignant.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Malignant", ] 
+
+ggplot(df.pca.unscaled, aes(PC1, PC2, col=class)) + 
+  geom_point() +
+  coord_cartesian(xlim = 1.2 * c(min(df.pca.unscaled$PC1), max(df.pca.unscaled$PC1)), 
+                  ylim = 1.2 * c(min(df.pca.unscaled$PC2), max(df.pca.unscaled$PC2))) +
+  geom_encircle(data = df.benign.unscaled) +
+  geom_encircle(data = df.malignant.unscaled) +
+  xlab("Principal component 1") + 
+  ylab("Principal component 2") +
+  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
+
+```
+
+```{r principal-component-plot3, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)",  include=F}
+
+# Unscaled + uncentered
+pca.res.unscaled <- prcomp(df[1:9], scale. = FALSE, center = FALSE)
+df.pca.unscaled <- data.frame(pca.res.unscaled$x, class=data$class)
+df.benign.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Benign", ] 
+df.malignant.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Malignant", ] 
+
+ggplot(df.pca.unscaled, aes(PC1, PC2, col=class)) + 
+  geom_point() +
+  coord_cartesian(xlim = 1.2 * c(min(df.pca.unscaled$PC1), max(df.pca.unscaled$PC1)), 
+                  ylim = 1.2 * c(min(df.pca.unscaled$PC2), max(df.pca.unscaled$PC2))) +
+  geom_encircle(data = df.benign.unscaled) +
+  geom_encircle(data = df.malignant.unscaled) +
+  xlab("Principal component 1") + 
+  ylab("Principal component 2") +
+  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
 ```
 
 \newpage
 
-In the plot in *Figure 3* you can see that some separation between the benign and malignant instances, but there is still quite some overlap as well. They are not two completely distinct groups based on principle component 1 and principle component 2. 
-
-```{r, include=FALSE}
-df <- data
-
-for(i in 1:9) {
-  df[,i] <- as.numeric(df[,i])
-}
-
-
-x <- ggcorrplot(cor(df[,1:9]),
-                hc.order = T, 
-                p.mat = cor_pmat(df[,1:9]))
-
-x
-
-
-```
-
+In the plot in Figure \@ref(fig:principal-component-plot1) you can see that some separation between the benign and malignant instances, but there is still quite some overlap as well. They are not two completely distinct groups based on principal component 1 and principal component 2. 

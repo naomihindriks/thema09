@@ -1,0 +1,379 @@
+---
+title: "Classifying Breast Cancer Benign or Malignnant"
+author: "Naomi Hindriks"
+date: "10/25/2021"
+output:
+  bookdown::pdf_document2:
+    toc: false
+bibliography: references.bib
+csl: ieee.csl
+header-includes:
+  \usepackage{caption}
+  \usepackage{float}
+  \floatplacement{figure}{H}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(kableExtra)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(ggpubr)
+library(tidyverse)
+```
+
+\newpage
+
+# Abbreviations {-}
+
+```{r abbreviations}
+abbreviations <- data.frame(abbreviations = c("FNA"), full.name = c("Fine needle aspiration"))
+
+kbl(
+  abbreviations,
+  col.names = NULL,
+  booktabs = T,
+  linesep = "",
+  longtable = T
+) %>%
+  kable_styling(latex_options = c("striped")) %>%
+  column_spec(1, width = "1.5cm") %>%
+  column_spec(2, width = "15cm")
+```
+
+\newpage
+
+\setcounter{tocdepth}{2}
+\tableofcontents
+
+\newpage
+
+# Introduction
+
+Breast cancer is a major health threat for women. In 2020 it was the most commonly diagnosed cancer with 11.7% of all newly diagnosed cancer cases being breast cancer. Furthermore it is the leading cause of cancer death in females with 685,000 deaths (15.5% of all female cancer deaths) in 2020 [@cancer-statistics]. Early detection of breast cancer is a crucial factor in the prognosis and survival rate of the patients [@early-detection]. 
+
+Fine needle aspiration (FNA) is a type of biopsy used to collect a sample of cells from a lump or mass. This sample can be viewed under a microscope and different cytological characteristics can be observed. FNA is a cost-effective, fast and complication-free technique to investigate a lump or mass [@fna]. But even though some of the cytological characteristics observed with FNA show a statistical significant difference between benign and malignant samples, not one single characteristic can be used to accurately separate the benign from the malignant samples [@multisurface-pattern-separation]. If breast FNA samples are used to triage possible breast cancer patients it is of utmost importance to have a high level of certainty in determining which of the samples are malignant. It is important to not ever classify a malignant sample as benign, as those patients will not go for further examination and treatment. The other way around, classifying a benign sample as malignant, is less disastrous, as the further examination of the patients will identify those samples as benign.
+
+To distinguish the malignant from the benign samples the practice of data mining might be able to help. Data mining is a modern technique used to find patterns in large batches of data. Between January of 1989 and November 1991 Dr. William H. Wolberg from the University of Wisconsin Hospitals has collected 699 breast FNA samples. Of these samples nine cytological characteristics were scored on a scale from 1 to 10 with 1 being the closest to benign and 10 being the most to anaplastic [@cytological-scoring-manual]. These nine characteristics are all considered to differ significantly between benign and malignant samples [@multisurface-pattern-separation]. In the *Breast Cancer Wisconsin (Original) Data Set* that  was assembled from this data, Dr. Wolberg added the correct classification to each sample: benign or malignant [@dataset]. This report will revolve around determining whether this data set is well suited for the purpose of data mining and cleaning it up where needed.
+
+
+\newpage
+
+# Results
+
+\setcounter{table}{0}
+
+The data found in the *Breast Cancer Wisconsin (Original) Data Set* is described in Table \@ref(tab:attribute-info), it can be seen that every sample, also called an instance, is comprised of one sample code number, nine cytological characteristic scores and a class label. This data set has a total of 699 instances.
+
+
+```{r attribute-info}
+attribute.info <- read.csv("attribute_info.csv", sep=";") 
+
+attribute.info.temp <- data.frame(
+  "Column" = attribute.info$column, 
+  "Attribute" = attribute.info$full.name,
+  "Unit" = attribute.info$unit,
+  "Description" = attribute.info$description
+  )
+
+kbl(
+    attribute.info.temp, 
+    row.names = F, 
+    caption = "Attribute Information from the Breast Cancer Wisconsin (Original) Data Set", 
+    booktabs = T, 
+    linesep = "",
+) %>%
+  kable_styling(latex_options = c("striped", "HOLD_position")) %>%
+  column_spec(c(1,3), width = "1.5cm") %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(4, width = "10cm") %>%
+  add_footnote(
+    label = c("The cytological characteristics of breast FNAs (seen in rows 2-10) get a score from 1 to 10 by an examining physician with 1 being the closest to benign and 10 the most anaplastic."),
+    notation = "none",
+    threeparttable = TRUE
+)
+
+#clean up environment
+remove(attribute.info.temp)
+```
+
+**Duplicated data**
+
+While inspecting the instances of the data set it became apparent that there were a lot of duplicated sample code numbers, even thought these are supposed to be unique. There are 100 instances that share their sample code number with at least 1 other instance and there are 46 sample code numbers that are found at least twice in the data set. In Table \@ref(tab:double-instances) and Table \@ref(tab:double-instances-2) all the instances with duplicated sample code numbers are displayed. In some cases not only the sample code number is duplicated, but every attribute of the instance is the exact same as another instance. In tables \@ref(tab:double-instances) and \@ref(tab:double-instances-2) the rows with the instances with sample code numbers that have an exact copy are colored red.
+
+When inspecting these tables it can be seen that the duplicated data is sometimes in consecutive rows, but not always. It can also be seen that most of the instances with duplicated sample code numbers  have the same class label, but not always. Most duplicates come in pairs, but they also come in bigger groups, up to 6 instances with the same sample code number. Since no reason can be found as to why these double sample code numbers and instances exist, it can not be verified that these samples are not from the same origin. Therefore the choice has been made to remove all but one of every duplicate sample code number to guarantee the uniqueness of every sample.
+
+**Missing data**
+
+In Table \@ref(tab:missing-data) all the instances that have at least one missing attribute are shown. It can be seen that there are 16 instances that do not have a complete record, all of them missing the *Bare Nuclei* attribute. Since this concerns only a fraction of the total number of instances (less than $\frac{1}{40}$) and since it is undesirable that missing attributes will influence the data mining the choice has been made to delete these instances from the data set.
+
+**The order of removing data**
+
+The missing data will be removed from the data set before the instances with duplicated sample code numbers are removed. This is done so that when one of the instances with a duplicated sample code number has missing data the other instance of this sample code number can be kept in the data. If it were to be done the other way around it could happen that an instances with a duplicated sample code number with a full record would be removed and an instance with missing data kept in the data, only for the instance with the missing data to be removed in the next processing step. After these filtering steps there are 630 instances left in the data set.
+
+
+```{r load-data}
+data <- read.table(file = 'data/breast-cancer-wisconsin.data',
+                                     header = F,
+                                     sep = ",",
+                                     na.strings = '?')
+
+names(data) <- attribute.info$name
+
+data$class <- factor(data$class, levels = c(2, 4), labels = c("Benign", "Malignant"))
+
+for(col.name in names(data)[2:10]) {
+  data[, col.name] <- factor(data[, col.name], levels=1:10, ordered=T)
+}
+
+#clean up environment
+remove(col.name)
+```
+
+```{r double-instances}
+duplicated <- data[data$id %in% unique(data$id[duplicated(data$id)]), ]
+duplicate.order <- order(duplicated$id)
+duplicated <- duplicated[duplicate.order, ]
+
+complete.duplicates <- data[data$id %in% unique(data$id[duplicated(data)]), ]
+colored.rows <- which(duplicated$id %in% complete.duplicates$id)
+
+kbl(
+  duplicated[1:50, ],
+  row.names = T, 
+  col.names = attribute.info$full.name,
+  caption = paste("Instances with duplicate sample code number (the rows with the instances with sample
+code numbers that have an exact copy are colored red)"),
+  booktabs = T, 
+  linesep = ""
+) %>%
+  kable_styling(latex_options = c("scale_down", "HOLD_position")) %>%
+  column_spec(1:11, width = "1.5cm") %>%
+  row_spec(colored.rows[colored.rows <= 50], background = "red") 
+
+```
+
+```{r double-instances-2}
+kbl(
+  duplicated[51:100, ],
+  row.names = T, 
+  col.names = attribute.info$full.name,
+  caption = paste("Instances with duplicate sample code number (the rows with the instances with sample
+code numbers that have an exact copy are colored red) continued"),
+  booktabs = T, 
+  linesep = ""
+) %>%
+  kable_styling(latex_options = c("scale_down", "HOLD_position")) %>%
+  column_spec(1:11, width = "1.5cm") %>%
+  row_spec((colored.rows - 50)[(colored.rows - 50) > 0], background = "red")
+```
+
+
+```{r missing-data}
+complete.instances <- complete.cases(data)
+instances.with.missing.data <- data[!complete.instances, ]
+
+kbl(
+  instances.with.missing.data,
+  row.names = T, 
+  col.names = attribute.info$full.name,
+  caption = "Instances with missing data from the Breast Cancer Wisconsin (Original) Data Set",
+  booktabs = T, 
+  linesep = ""
+) %>%
+  kable_styling(latex_options = c("scale_down", "HOLD_position", "striped")) %>%
+  column_spec(1:11, width = "1.5cm")
+
+```
+
+```{r cleaning-data}
+unfiltered.data <- data
+
+# find rows with complete records
+complete.instances <- complete.cases(data)
+
+# only keep rows with complete instances
+data <- data[complete.instances, ]
+
+# find instances with duplicated id
+duplicates <- duplicated(data$id)
+
+# remove duplicate instances from data
+data <- data[!duplicates, ]
+```
+
+
+**Data distribution**
+
+*Class distribution*
+
+It is important to look at the class distribution because studies have shown that the distribution of the class labels can have an effect on classifier learning, and that the natural class distribution does not always give the best classifiers [@class-distribution][@class-distribution2]. According to [@class-distribution] there are several explanations for why the minority class generally has a higher error rate than the majority class when using unbalanced data while training a classifier.
+
+Ways to handle the unbalanced data while making a classifier include under-sampling of the majority class and over-sampling of the minority-class. Another way is to tackle this problem is to use a cost-sensitive classifier that gives a heavier weight to misclassifying the minority class. These techniques have their own advantages and drawbacks [@class-distribution3]. 
+
+When using over- or under-sampling techniques it is important to keep in mind that this will result in a bias in the model, this bias will cause the over-sampled class to be predicted too often. This bias will improve the performance of the classifier on the over-sampled class, but the overall performance will deteriorate due to this bias. To compensate for this bias a correction has to be built into the model, one way of using a correction is shown in [@class-distribution]. When using these techniques it is also important to keep in mind that class imbalance is a relative problem that does not only depend on the degree of class imbalance, but also on the complexity of the concept representing the data, the size of the training set and also on the classifier involved. When using a classifier that is not susceptible to the class imbalance problem the use of over- and under-sampling could hurt the classifier instead of helping it [@class-distribution2].
+
+In Figure \@ref(fig:class-distribution) the class distribution of the Breast Cancer Wisconsin (Original) Data Set can be seen before and after filtering. It can be seen that the data before filtering as well as the data after filtering seems to be unbalanced, it has a minority and majority class. However the data does not seem to be extremely unbalanced. It can also be seen that the data after the filtering step is slightly more balanced than before filtering. 
+
+
+```{r class-distribution_old, fig.cap="Distribution of the class attribute of the data before and after the filtering steps (the filtering steps are: removing rows with missing data, and than removing duplicated sample code numbers). The numbers in the bars are the actual number of instances in the data set.", include=F}
+
+#Create a dataframe in longformat with the class label and a column indicating if the sample is from the filtered or unfiltered data set.
+class.distribution <- data.frame(
+  filtered = c(rep("before", nrow(unfiltered.data)), rep("after", nrow(data))), 
+  class = c(as.character(unfiltered.data$class), as.character(data$class)))
+
+ggplot(class.distribution, aes_string(x = "class", y = "..prop..")) +
+  geom_bar(
+    aes(fill = factor(filtered), group = -as.numeric(factor(filtered))), 
+      position = position_dodge()
+      ) + 
+  geom_text(
+    aes(label = ..count.., group = -as.numeric(factor(filtered))), 
+    stat = "count", 
+    position = position_dodge(width = 0.9),
+    vjust = 2) +
+  scale_y_continuous(labels=scales::percent) +
+  scale_fill_manual(
+      name = "Data set", 
+      values = c(hue_pal()(2)), 
+      breaks = c("before", "after"), 
+      labels = c("Data before filtering", "Data after filtering")) +
+  labs(title="Class distribution before and after filtering of the data set") +
+  xlab("Class") +
+  ylab("Pecentage of data set")
+```
+
+```{r class-distribution, fig.cap="Distribution of the class attribute of the data before and after the filtering steps (the filtering steps are: removing rows with missing data, and than removing duplicated sample code numbers). The numbers between parentheses are the actual number of instances in the data sets."}
+
+class.distribution %>%
+  count(class, filtered) %>%       
+  group_by(filtered) %>%
+  mutate(pct= prop.table(n) * 100) %>%
+  ggplot(aes(x = factor(filtered), y = pct, fill=class)) +
+  geom_bar(stat="identity") +
+  ylab("Number of instances in dataset (in percentage)") +
+  geom_text(
+    aes(label=paste0(sprintf("%1.1f", pct), "%", sprintf(" (%i)", n))),
+            position=position_stack(vjust=0.5)
+    ) +
+  ggtitle("Class distribution before and after filtering of the data set") +
+  scale_x_discrete(
+    name = "Dataset", 
+    limits=sort(levels(factor(class.distribution$filtered)), decreasing = T), 
+    labels=c("Before filtering", "After filtering")
+    ) +
+  scale_fill_discrete(name= "Class")
+
+```
+
+
+*Attribute distributions*
+
+Test test test
+
+```{r print-distribution-barplot, fig.height=10, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together",fig.pos="H"}
+
+long.data <- pivot_longer(data[,-1], 1:9)
+
+names.labs <- attribute.info$full.name
+names(names.labs) <- attribute.info$name
+
+ggplot(long.data, aes(x=value)) +
+  geom_bar(aes(y = ..prop.., fill = name, group = class), stat="count") +
+  labs(y = "Percent", fill="Attribute") +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_discrete(
+    name = "Attribute", 
+    breaks = sort(attribute.info$name),
+    labels = attribute.info$full.name[order(attribute.info$name)]
+    ) +
+  labs(
+    title="Distribution of cytological characteristics scores",
+    x ="Score on a scale from 1 to 10", 
+    y = "Percentage of instances"
+    ) +
+  facet_grid(name ~ class, scales = "free", margin = "class", labeller = labeller(name = names.labs)) +
+  theme(legend.position = "bottom", strip.text.y = element_blank())
+
+```
+
+
+```{r print-distribution-barplot_old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", fig.pos="H", include=F}
+
+plot.list <- list()
+
+for(attr in colnames(data)[2:10]) {
+  new.plot <- ggplot(data, aes_string(x = attr, y = "..prop..", group = 1)) +
+    geom_bar(aes(fill="Both classes"), alpha = 0.8) +
+    geom_bar(
+      aes(fill = class, group = class), 
+      position = position_dodge2(preserve = "single"), 
+      alpha = 0.8
+      ) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_fill_manual(
+      name = "Class", 
+      values = c("grey50", hue_pal()(2)), 
+      breaks = c("Both classes", "Benign", "Malignant"), 
+      labels = c("Both classes", "Benign", "Malignant")
+    ) +
+    xlab(
+      paste(
+        attribute.info$full.name[attribute.info$name == attr], 
+        "scored on a scale from 1 to 10"
+        )
+      ) + 
+    ylab("Percentage of instances")
+  
+  leg <- get_legend(new.plot)
+  
+  plot.list[[attr]] <- new.plot + theme(legend.position = "none")
+}
+
+plot.list[["leg"]] <- leg
+
+p <- ggarrange(plotlist = plot.list, ncol = 2, nrow = 5) 
+
+annotate_figure(
+  p, 
+  top = text_grob(
+    "Distribution of cytological characteristics scores", 
+    face = "bold", 
+    size = 14
+  )
+)
+```
+
+
+```{r, include=F}
+vars <- apply(data[c(-1, -ncol(data))], 2, var)
+attr.names <- attribute.info[attribute.info$name %in% names(vars),][,c("full.name", "name")]
+
+var.per.attr.df = data.frame(attr.name = attr.names$full.name, vars = vars[attr.names$name])
+
+kbl(
+  var.per.attr.df,
+  caption = "Variance per attribute",
+  row.names = F,
+  col.names = c("Attribute", "Variance"),
+  booktabs = T,
+  linesep = "",
+  digits = 3) %>%
+  kable_styling(latex_options = c("striped", "HOLD_position")) %>%
+  column_spec(1:2, width = "7cm")
+```
+
+
+\newpage
+
+# Discussion & Conclusion
+
+\newpage
+
+# References
+
+<div id="refs"></div>
+
