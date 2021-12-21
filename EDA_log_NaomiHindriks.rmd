@@ -250,7 +250,7 @@ summary(data)
 
 For all attributes (except the class attribute) the most common value is 1 or 2. This makes sense, the most instances are classified as benign and lower numbers indicate more benign characteristics. Now I will make a table and bargraph to compare the class distribution before and after the filtering.
 
-```{r class-distribution-before-vs-after }
+```{r class-distribution-table}
 class.distribution <- data.frame(
   filtered = c(rep("before", nrow(unfiltered.data)), rep("after", nrow(data))), 
   class = c(as.character(unfiltered.data$class), as.character(data$class)))
@@ -263,8 +263,6 @@ d1 <-  class.distribution %>% group_by(filtered, class) %>%
       mutate(class="Total")) %>%
   mutate(pct = round(n/((sum(n)/2))*100)) %>%
   arrange(desc(filtered))
-
-d1
 
 kbl(
   d1[,2:4],
@@ -297,54 +295,9 @@ ggplot(class.distribution, aes_string(x = "class", y = "..prop..")) +
 ```
 
 
+When looking at *Table \@ref(tab:class-distribution-table)* and *Figure \@ref(fig:class-distribution-bargraph)* you can see that the class distribution hasn't changed all that much from the filtering steps. This is a positive sign, if it had changed a lot the distribution after filtering might not have been representative anymore. Luckily that is not the case.
+
 I will make bar plots to show the distribution of the cytological characteristic. I chose bar plots for this because the data is ordinal.
-
-
-```{r , fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", include=FALSE}
-
-plot.list <- list()
-
-for(attr in colnames(data)[1:9]) {
-  new.plot <- ggplot(data, aes_string(x = attr, y = "..prop..", group = 1)) +
-    geom_bar(aes(fill="Both classes"), alpha = 0.8) +
-    geom_bar(
-      aes(fill = class, group = class), 
-      position = position_dodge2(preserve = "single"), 
-      alpha = 0.8
-      ) +
-    scale_y_continuous(labels = scales::percent_format()) +
-    scale_fill_manual(
-      name = "Class", 
-      values = c("grey50", hue_pal()(2)), 
-      breaks = c("Both classes", "Benign", "Malignant"), 
-      labels = c("Both classes", "Benign", "Malignant")
-    ) +
-    xlab(
-      paste(
-        attribute.info$full.name[attribute.info$name == attr], 
-        "scored on a scale from 1 to 10"
-        )
-      ) + 
-    ylab("Percentage of instances")
-  
-  leg <- get_legend(new.plot)
-  
-  plot.list[[attr]] <- new.plot + theme(legend.position = "none")
-}
-
-plot.list[["leg"]] <- leg
-
-p <- ggarrange(plotlist = plot.list, ncol = 2, nrow = 5)
-
-annotate_figure(
-  p, 
-  top = text_grob(
-    "Distribution of cytological characteristics scores", 
-    face = "bold", 
-    size = 14
-  )
-)
-```
 
 
 ```{r attr-distribution-barplot-old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", include=F}
@@ -398,7 +351,12 @@ ggplot(long.data, aes(x=value)) +
     x ="Score on a scale from 1 to 10", 
     y = "Percentage of instances"
     ) +
-  facet_grid(name ~ class, scales = "free", margin = "class", labeller = labeller(name = names.labs)) +
+  facet_grid(
+    name ~ class, 
+    scales = "free", 
+    margin = "class", 
+    labeller = labeller(name = names.labs)
+  ) +
   theme(legend.position = "bottom", strip.text.y = element_blank())
 
 ```
@@ -424,25 +382,57 @@ ggplot(long.df2, aes(x=value)) +
   theme(legend.position = "bottom")
 ```
 
-
-```{r, fig.height=12, fig.width=10, include=F}
-
-preproc1 <- preProcess(df[,c(1:9)], method=c("center","scale"))
-norm1 <- predict(preproc1, df)
-norm1.long <-  pivot_longer(norm1, 1:9)
-
-ggplot(long.df, aes(x = value)) +
-  geom_density(aes(fill=name)) +
-  facet_grid(name ~ class, margin = "class")
-
-ggplot(norm1.long, aes(x = value)) +
-  geom_density(aes(fill=name)) +
-  facet_grid(name ~ class, margin = "class")
-```
-
 \newpage
 
-When looking at the distribution in Figure \@ref(fig:attr-distribution-barplot) it seems there is a difference between the benign and malignant samples for every attribute. Now I will look at the correlation between the different attributes.  
+When looking at the distribution in *Figure \@ref(fig:attr-distribution-barplot)* it seems there is a difference in distribution between the benign and malignant samples for every attribute. When looking at the overall distributions for the attributes it is important to keep in mind that the benign samples have a bigger influence on this because there are more instances with that class. The seemingly big difference in distributions for all of these attributes is a positive sign for machine learning, all of these attributes could be useful in differentiating benign and malignant samples from one another. 
+
+
+Now I will test if the differences observed in *Figure \@ref(fig:attr-distribution-barplot)* are significant. I will use the Mann–Whitney U test for this as this is a non-parametric test that can be used for data that do not follow a normal distribution and ordinal data. For each attribute I will test if the malignant samples are significantly greater than the benign samples.
+
+
+```{r mann-whitney-tests}
+temp <- data.frame("attribute" = character(), "estimate" = double(), "pval" = double())
+
+temp.data <- data
+
+temp.data$class <- relevel(temp.data$class, ref = "Malignant")
+
+for(attr in colnames(temp.data)[1:9]) {
+  res <- wilcox.test(
+    as.numeric(temp.data[,attr]) ~ temp.data$class, 
+    conf.int = TRUE, 
+    alternative = "greater"
+  )
+  
+  full.name <- attribute.info$full.name[attribute.info$name == attr]
+  temp <- rbind(temp, data.frame("attribute" = full.name, 
+                                 "estimate" = res$estimate,
+                                 "pval" = res$p.value))
+}
+
+row.names(temp) <- NULL;
+
+kbl(
+  temp, 
+  col.names = c("Attribute name", "Estimate median of difference", "P value"),
+  booktabs = T,
+  digits = c(100),
+  linesep = "",
+  caption = "Results of one-sided Mann–Whitney U test for each attribute where the null hypothesis is that the distribution of the malignant samples \\textbf{is not} higher than that of the benign samples. And the alterernative hypothesis is that the distribution of the Malignant samples \\textbf{is} higher than that of the benign samples. All of the p-values are well below 0.05 so we reject the null hypothesis for each attribute."
+) %>% 
+  kable_styling(latex_options = c("HOLD_position", "striped"))
+
+remove(temp, temp.data)
+```
+
+
+In *Table \@ref(tab:mann-whitney-tests)* the results of one-sided Mann-Whitney U tests are displayed. Each row of the table represents a Mann-Whitney U tests on an attribute. The null hypothesis for each test is that the distribution of malignant samples **is not** shifted to the right compared to the distribution of the benign samples. The alternative hypothesis is that the distribution of malignant samples **is** shifted to the right compared to the distribution of the benign samples. If the p-value for one such test is lower than 0.05 the null hypothesis is rejected. Since all the p-values are well below 0.05 the null hypothesis is rejected in all the tests. The estimate median of difference is the median of the difference between all the instances in the two samples. The size of the estimate median of difference of the bare nuclei is the largest. This is logical when looking at *Figure \@ref(fig:attr-distribution-barplot)* you can see that most of the benign samples have a score of 1 and most of the malignant samples have a score of 10. The estimate median of difference of the mitoses also stands out. This estimate is very small, close to zero even. This also makes sense when looking at the *Figure \@ref(fig:attr-distribution-barplot)* as you can see that for both benign and malignant cases most instances have a score of 1, but in the malignant cases the data is spread out more. So even though the change is not big there is a significant difference in distribution of mitoses between benign and malignant samples.
+
+
+### Relation between attributes
+
+Now I will look at the correlation between the different attributes. My expectation is that some or all of the attributes will be positively correlated because the scores of the attributes range from 1 to 10, with 1 being the closest to benign and 10 the most anaplastic. This means that if the sample is benign, all or most of the scores will be 1 or close to 1, and if the sample is malignant the scores will tend to be higher than 1. This idea is also supported by the fact that for all the attributes the distributions of the malignant samples were significantly shifted to the right compared to the benign distributions, they all shift in the same direction. For calculating the correlation score I will not use the Pearson method, as it makes the assumption that the data is normally distributed, in this case the data is not normally distributed, so I will have to find a different method. I have chosen to use Kendall $\tau_{b}$ rank correlation as seems to be better at handling ties.
+
 
 ```{r attr-correlation-plot, fig.cap="Correlations between the attributes"}
 df <- data
@@ -453,33 +443,40 @@ for(i in 1:9) {
 colnames(df) <- attribute.info$full.name[-1]
 
 # Calculate  p values for correlation coefficients
-correlation.p.values <- cor_pmat(df[,1:9])
+correlation.p.values.kendall <- cor_pmat(df[,1:9], method = "kendall")
 
 # Plot correlation coefficients for attributes
 ggcorrplot(
-  cor(df[,1:9]),
+  cor(df[,1:9], method = "kendall"),
   type = "lower", 
   outline.col = "white",
   lab = TRUE,
-  p.mat = cor_pmat(df[,1:9])
+  p.mat = correlation.p.values.kendall
 ) +
   ggtitle("Correlation between the attributes")
 ```
 
 
-```{r attr-correlation-p-value-table}
+```{r attr-correlation-p-value}
 # Print p values in table
 kbl(
-  correlation.p.values,
-  booktabs = T,
-  digits = 20
+  correlation.p.values.kendall,
+  booktabs = T, 
+  linesep = "",
+  caption = "P values of Kendall $\\tau_{b}$ correlation coefficient",
+  digits = 50,
+  escape = F
 ) %>%
-  column_spec(1:10, width = "1.3cm") %>%
-  column_spec(c(2, 7, 8, 10), width = "2,5cm") %>%
+  column_spec(1:10, width = "3cm") %>%
+  column_spec(1:10, width = "2cm") %>%
   kable_styling(latex_options = c("HOLD_position", "striped", "scale_down"))
 ```
 
-Next I will conduct principal component analysis, so we can see if two distinct groups can be seen based on the principal components.
+When looking at the correlations between the variables in *Figure \@ref(fig:attr-correlation-plot)* it is clear that most of the attributes have a moderate to strong relationship. Clump thickness and mitoses seem to have a weak to moderate relationship to the other attributes. The attributes uniformity of cell size and uniformity of cell shape stand out as having a very strong relationship with each other (with a Kendall's $\tau_{b}$ correlation coefficient of 0.82). As expected all the correlations are positive. When looking at the p-values corresponding to the correlation coefficients in *Table \@ref(tab:attr-correlation-p-value)* it can be seen that the p-values are all very small meaning that all the correlation coefficients in *Figure \@ref(fig:attr-correlation-plot)* are statistically significant. These correlation coefficients could impact specific classifier learning algorithms. One such example is the Naive Bayes classifier, as it assumes that the values of the attributes are independent of each other.
+
+### Principal component analysis
+
+Next I will conduct principal component analysis, so we can see if two distinct groups can be seen based on the principal components. I have some doubts whether or not I should scale the data before performing the PCA. All of the attributes are on a scale from 1 to 10. Before making the decision I will check the variance of the different attributes.
 
 ```{r variance-per-attr}
 vars <- apply(data[c(-ncol(data))], 2, var)
@@ -499,146 +496,12 @@ kbl(
   column_spec(1:2, width = "7cm")
 ```
 
-```{r scree-pca-plots-old, fig.height=12, fig.width=10, fig.cap="Principal component analyses", include=F}
-df <- data
+The variance of the attributes is displayed in *Table \@ref(tab:variance-per-attr)*. The variance is not the same for the attributes. This means that when performing PCA that the attribute with the highest variance will have the most influence on the principal components, and the attributes with the lowest variance will only have a little influence on the principal components. The question remains whether the attributes values are on the same scale. All the attributes are on an ordinal scale from 1 to 10, in this [manual](https://www.rai-light.com/docs/BCD_User_Manual_v01.pdf) you can find a more extensive explanation how these are scored. When reading the table on page 4 of this document it becomes clear that the attributes all are scored on a scale from 100% normal to 100% anaplastic, but the steps between the percentages differ slightly (most steps of all the attributes are 10% difference, but some include steps of 15%, and some have 1 step of 20%). It is also hard to say if 10% difference in mitoses means the same as 10% difference in clump thickness for example. Another problem for a correct PCA is that not all the steps are of the size, in an ideal PCA every step would have the same meaning. 
 
-for(i in 1:9) {
-  df[,i] <- as.numeric(df[,i])
-}
-
-scaled_options = c(TRUE, FALSE)
-centered_options = c(TRUE, FALSE)
-
-pca.list = list()
-plot.list = list()
-
-for(scaled_option in  scaled_options) {
-  for(centered_option in centered_options) {
-    # Get principal components
-    pca.res <- prcomp(df[1:9], scale. = scaled_option, center = centered_option)
-    pca.list[[paste("scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- pca.res
-    
-    # Calculate explained variance
-    var.explained.df <- data.frame(
-      PC= paste0("PC",1:9), 
-      var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2)
-    )
-
-    # Plot explained variance for PC's
-    new.scree.plot <- ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
-      geom_point(size=4)+
-      geom_line()+
-      #labs(title=paste("Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", Centered = ", centered_option, sep = "")) +
-      ylab("Variance explained") +
-      xlab("Principal component")
-    
-    # Get points to plot in PCA plot
-    df.pca <- data.frame(pca.res$x, class=data$class)
-    df.benign <- df.pca[df.pca$class == "Benign", ] 
-    df.malignant <- df.pca[df.pca$class == "Malignant", ]
-    
-    # PCA plot
-    new.pca.plot <- ggplot(df.pca, aes(PC1, PC2, col=class)) + 
-      geom_point() +
-      coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
-                      ylim = 1.2 * c(min(df.pca$PC2), max(df.pca$PC2))) +
-      geom_encircle(data = df.benign) +
-      geom_encircle(data = df.malignant) +
-      xlab("Principal component 1") + 
-      ylab("Principal component 2") + 
-      theme(legend.direction = "horizontal", legend.background = element_rect(linetype = "solid", size = 1))
-      #labs(title = paste("Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", Centered = ", centered_option, sep = ""))
-    
-    leg <- get_legend(new.pca.plot)
-    new.pca.plot <- new.pca.plot + theme(legend.position = "none")
-    
-    plot.list[[paste("scree.plot.scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- new.scree.plot
-    
-    plot.list[[paste("pca.plot.scaled.", scaled_option, ".centered.", centered_option, sep = "")]] <- new.pca.plot
-  }
-}
-
-# Add legend to plotlist
-plot.list[["leg"]] <- leg
-
-# Titles for rows and columns wrapped plot
-row1 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="Scaled = TRUE\nCentered = TRUE", 
-    angle = 90, 
-    size = 5,
-    fontface = 2) + 
-  theme_void() 
-row2 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="Scaled = TRUE\nCentered = FALSE", 
-    angle = 90, 
-    size = 5,
-    fontface = 2) + 
-  theme_void() 
-row3 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="Scaled = FALSE\nCentered = TRUE", 
-    angle = 90, 
-    size = 5,
-    fontface = 2) + 
-  theme_void() 
-row4 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="Scaled = FALSE\nCentered = FALSE", 
-    angle = 90, 
-    size = 5,
-    fontface = 2) + 
-  theme_void() 
-col1 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="Explained variance", 
-    size = 5.5,
-    fontface = 2) + 
-  theme_void() 
-col2 <- ggplot() + 
-  annotate(
-    geom = 'text', 
-    x=1, y=1, 
-    label="PCA plot", 
-    size = 5.5,
-    fontface = 2) + 
-  theme_void() 
-
-title.list <- list(a = row1, b = row2, c = row3, d = row4, e = col1, f = col2)
-
-layoutplot <- "
-#eeeeffff
-agggghhhh
-agggghhhh
-agggghhhh
-biiiijjjj
-biiiijjjj
-biiiijjjj
-ckkkkllll
-ckkkkllll
-ckkkkllll
-dmmmmnnnn
-dmmmmnnnn
-dmmmmnnnn
-#####oooo
-"
-
-wrap_plots(plotlist = c(title.list, plot.list), guides = 'collect', design = layoutplot)
-```
+Now I will do the analysis. I have chosen to do the analysis twice, once with scaling and once without scaling and compare the results with each other.
 
 
-```{r scree-pca-plots, fig.height=10, fig.width=10, fig.cap="Principal component analyses"}
+```{r scree-pca-plots, fig.height=10, fig.width=10, fig.cap="Principal component analysis"}
 scaled_options = c(TRUE, FALSE)
 
 pca.list = list()
@@ -659,7 +522,6 @@ for(scaled_option in  scaled_options) {
   new.scree.plot <- ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
     geom_point(size=4)+
     geom_line()+
-    #labs(title=paste("Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, ", sep = "")) +
     ylab("Variance explained") +
     xlab("Principal component")
   
@@ -678,7 +540,6 @@ for(scaled_option in  scaled_options) {
     xlab("Principal component 1") + 
     ylab("Principal component 2") + 
     theme(legend.direction = "horizontal", legend.background = element_rect(linetype = "solid", size = 1))
-    #labs(title = paste("Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set\n", "Scaled = ", scaled_option, sep = ""))
   
   leg <- get_legend(new.pca.plot)
   new.pca.plot <- new.pca.plot + theme(legend.position = "none")
@@ -744,97 +605,41 @@ bgggghhhh
 wrap_plots(plotlist = c(title.list, plot.list), guides = 'collect', design = layoutplot)
 ```
 
-```{r scree-plot, fig.cap="Explained variance per principal component", include=F}
-pca.res <- prcomp(df[1:9], scale. = TRUE)
 
-var.explained.df <- data.frame(
-  PC= paste0("PC",1:9), 
-  var.explained=(pca.res$sdev)^2/sum((pca.res$sdev)^2)
-)
-
-ggplot(var.explained.df, aes(x=PC,y=var.explained, group=1))+
-  geom_point(size=4)+
-  geom_line()+
-  labs(title="Scree plot: PCA on Breast Cancer Wisconsin (Original) Data Set") +
-  ylab("Variance explained") +
-  xlab("Principal component")
-```
-
-In the scree plot in Figure \@ref(fig:scree-pca-plots) we see a good difference between the variance explained by principal component 1 and the rest. Next I will make a table in which you can see how much every cytological characteristic contributes to the principal components.
-
-
-```{r table-attributes-contribution-to-principal-components}
-row.names(pca.res$rotation) <- attribute.info$full.name[2:10]
-
+```{r table-principal-components-rotations-scaled}
 kbl(
-    pca.res$rotation,
-    caption = "PCA: loadings of the 9 cytological characteristics to each principal component", 
+    pca.list[["scaled.TRUE"]]$rotation,
+    caption = "PCA: Rotation matrix of the 9 cytological characteristics to each principal component, scaled = TRUE", 
     booktabs = T, 
     linesep = ""
   ) %>%
   kable_styling(latex_options = c("striped", "scale_down", "HOLD_position")) %>%
   column_spec(1:9, width = "2cm")
-
-df.pca <- data.frame(pca.res$x, class=data$class)
-df.benign <- df.pca[df.pca$class == "Benign", ] 
-df.malignant <- df.pca[df.pca$class == "Malignant", ] 
 ```
 
-In *Table \@ref(tab:table-attributes-contribution-to-principal-components)* can be seen that the different cytological characteristics contribute quite similarly to principal component 1. There is not one cytological characteristics that clearly contributes most. Although mitoses contributes a bit less to this component, it contributes a lot more to principal component 2. Next I will make a plot of principal component 1 and 2.
-
-```{r principal-component-plot1, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)", include=F}
-
-# Scaled + centered
-ggplot(df.pca, aes(PC1, PC2, col=class)) + 
-  geom_point() +
-  coord_cartesian(xlim = 1.2 * c(min(df.pca$PC1), max(df.pca$PC1)), 
-                  ylim = 1.2 * c(min(df.pca$PC2), max(df.pca$PC2))) +
-  geom_encircle(data = df.benign) +
-  geom_encircle(data = df.malignant) +
-  xlab("Principal component 1") + 
-  ylab("Principal component 2") +
-  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
+```{r table-principal-components-rotations-not-scaled}
+kbl(
+    pca.list[["scaled.FALSE"]]$rotation,
+    caption = "PCA: Rotation matrix of the 9 cytological characteristics to each principal component, scaled = FALSE", 
+    booktabs = T, 
+    linesep = ""
+  ) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_position")) %>%
+  column_spec(1:9, width = "2cm")
 ```
 
-```{r principal-component-plot2, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)",  include=F}
+Now it is time for the fun part: interpreting the results of the PCA's. In the PCA plots in *Figure \@ref(fig:scree-pca-plots)* it can be seen that with or without scaling, the benign and malignant samples clearly form two distinct clusters, this is a positive sign for making a classifier for this data. The in the unscaled plot the clusters might seem a bit more distinct than in the scaled plot.
 
-# Unscaled + centered
-pca.res.unscaled <- prcomp(df[1:9], scale. = FALSE, center = TRUE)
-df.pca.unscaled <- data.frame(pca.res.unscaled$x, class=data$class)
-df.benign.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Benign", ] 
-df.malignant.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Malignant", ] 
+In the scaled PCA plot (top right) the variance in the second principal component seems to represent a small amount of instances. This second component does seem to say something about malignancy, you can see that only 3 benign instances are higher than -2, a lot more malignant instances are in this area (even though benign is the majority class). Looking at *Table \@ref(tab:table-principal-components-rotations-scaled)* we can observe that the second component is dominated by the mitoses attribute. Comparing the second principle component to the distribution of mitoses in *Figure \@ref(fig:attr-distribution-barplot)* the distribution of the second component makes sense, most of the instances have a mitoses of 1, but from the instances that have a mitoses score higher than 1 most of them are malignant.
 
-ggplot(df.pca.unscaled, aes(PC1, PC2, col=class)) + 
-  geom_point() +
-  coord_cartesian(xlim = 1.2 * c(min(df.pca.unscaled$PC1), max(df.pca.unscaled$PC1)), 
-                  ylim = 1.2 * c(min(df.pca.unscaled$PC2), max(df.pca.unscaled$PC2))) +
-  geom_encircle(data = df.benign.unscaled) +
-  geom_encircle(data = df.malignant.unscaled) +
-  xlab("Principal component 1") + 
-  ylab("Principal component 2") +
-  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
+In the unscaled PCA plot (bottom right) principal component 1 seems to have a dividing line between benign and malignant at around -2.5. On principal component 2 the benign instances seem to be concentrated around 0 and the malignant instances are more dispersed.
 
-```
+Comparing the explained variance plots in *Figure \@ref(fig:scree-pca-plots)* you can see that they are quite the same. In both cases the first component explains by far most of the variance. In the unscaled PCA the first component explains a little more of the variance than the scaled version and the second component a little less. The difference in these plots doesn't seem significant. It is important to keep in mind that in the unscaled version the different attribute do not contribute equally to the total variance.
 
-```{r principal-component-plot3, fig.cap="Principal component plot circles are drawn around the two groups  of points that represent the class attributes (benign and malignant)",  include=F}
+When comparing *Table \@ref(tab:table-principal-components-rotations-scaled)* and *Table \@ref(tab:table-principal-components-rotations-not-scaled)* you can see that in *Table \@ref(tab:table-principal-components-rotations-scaled)*, the scaled PCA, the attributes contribute quite equally to principal component 1, the smallest contributor to component 1 is mitoses, but mitoses does dominate the second component. This is explained by mitoses having a smaller relationship to all the other attributes, as can be seen in the correlation plot (the greater the correlation between two attributes, the more they can be displayed on the same axis). In *Table \@ref(tab:table-principal-components-rotations-not-scaled)*, the unscaled PCA, the attribute with the biggest variance (bare nuclei) contributes most to the first as well as the second principal component and mitoses does not play a big role in either of the two. 
 
-# Unscaled + uncentered
-pca.res.unscaled <- prcomp(df[1:9], scale. = FALSE, center = FALSE)
-df.pca.unscaled <- data.frame(pca.res.unscaled$x, class=data$class)
-df.benign.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Benign", ] 
-df.malignant.unscaled <- df.pca.unscaled[df.pca.unscaled$class == "Malignant", ] 
-
-ggplot(df.pca.unscaled, aes(PC1, PC2, col=class)) + 
-  geom_point() +
-  coord_cartesian(xlim = 1.2 * c(min(df.pca.unscaled$PC1), max(df.pca.unscaled$PC1)), 
-                  ylim = 1.2 * c(min(df.pca.unscaled$PC2), max(df.pca.unscaled$PC2))) +
-  geom_encircle(data = df.benign.unscaled) +
-  geom_encircle(data = df.malignant.unscaled) +
-  xlab("Principal component 1") + 
-  ylab("Principal component 2") +
-  labs(title = "Principal component analysis on\nBreast Cancer Wisconsin (Original) Data Set")
-```
+Keeping the correlations between the attributes in mind, and the fact that all the attributes contribute more equally I think that the PCA plot with scaling is the better visualization of the multidimensional data, but the unscaled plot seems to have a better division between benign and malignant instances, this could be caused by the fact that the attribute with the biggest variance is also the best predictor of malignancy. However this is not the core purpose of PCA. If we want to find the axis that represents the biggest separation in class we should do *linear discriminant analysis*.
 
 \newpage
 
-In the plot in Figure \@ref(fig:principal-component-plot1) you can see that some separation between the benign and malignant instances, but there is still quite some overlap as well. They are not two completely distinct groups based on principal component 1 and principal component 2. 
+## Machine Learning Phase

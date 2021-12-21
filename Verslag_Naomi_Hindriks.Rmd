@@ -17,11 +17,14 @@ header-includes:
 knitr::opts_chunk$set(echo = FALSE)
 library(kableExtra)
 library(tidyr)
-library(dplyr)
 library(ggplot2)
 library(scales)
 library(ggpubr)
 library(tidyverse)
+library(ggcorrplot)
+library(ggalt)
+library(ggbiplot)
+library(dplyr)
 ```
 
 \newpage
@@ -29,7 +32,7 @@ library(tidyverse)
 # Abbreviations {-}
 
 ```{r abbreviations}
-abbreviations <- data.frame(abbreviations = c("FNA"), full.name = c("Fine needle aspiration"))
+abbreviations <- data.frame(abbreviations = c("FNA", "PCA"), full.name = c("Fine needle aspiration", "Principal component analysis"))
 
 kbl(
   abbreviations,
@@ -54,7 +57,7 @@ kbl(
 
 Breast cancer is a major health threat for women. In 2020 it was the most commonly diagnosed cancer with 11.7% of all newly diagnosed cancer cases being breast cancer. Furthermore it is the leading cause of cancer death in females with 685,000 deaths (15.5% of all female cancer deaths) in 2020 [@cancer-statistics]. Early detection of breast cancer is a crucial factor in the prognosis and survival rate of the patients [@early-detection]. 
 
-Fine needle aspiration (FNA) is a type of biopsy used to collect a sample of cells from a lump or mass. This sample can be viewed under a microscope and different cytological characteristics can be observed. FNA is a cost-effective, fast and complication-free technique to investigate a lump or mass [@fna]. But even though some of the cytological characteristics observed with FNA show a statistical significant difference between benign and malignant samples, not one single characteristic can be used to accurately separate the benign from the malignant samples [@multisurface-pattern-separation]. If breast FNA samples are used to triage possible breast cancer patients it is of utmost importance to have a high level of certainty in determining which of the samples are malignant. It is important to not ever classify a malignant sample as benign, as those patients will not go for further examination and treatment. The other way around, classifying a benign sample as malignant, is less disastrous, as the further examination of the patients will identify those samples as benign.
+Fine needle aspiration (FNA) is a type of biopsy used to collect a sample of cells from a lump or mass. This sample can be viewed under a microscope and different cytological characteristics can be observed. FNA is a cost-effective, fast and complication-free technique to investigate a lump or mass [@fna]. But even though some of the cytological characteristics observed with FNA show a statistical significant difference between benign and malignant samples, not one single characteristic can be used to accurately separate the benign from the malignant samples [@multisurface-pattern-separation]. If breast FNA samples are used to triage possible breast cancer patients it is of utmost importance to have a high level of certainty in determining which of the samples are malignant. It is very important not to classify a malignant sample as benign, as those patients will not go for further examination and treatment. The other way around, classifying a benign sample as malignant, is less disastrous, as the further examination of the patients will identify those samples as benign.
 
 To distinguish the malignant from the benign samples the practice of data mining might be able to help. Data mining is a modern technique used to find patterns in large batches of data. Between January of 1989 and November 1991 Dr. William H. Wolberg from the University of Wisconsin Hospitals has collected 699 breast FNA samples. Of these samples nine cytological characteristics were scored on a scale from 1 to 10 with 1 being the closest to benign and 10 being the most to anaplastic [@cytological-scoring-manual]. These nine characteristics are all considered to differ significantly between benign and malignant samples [@multisurface-pattern-separation]. In the *Breast Cancer Wisconsin (Original) Data Set* that  was assembled from this data, Dr. Wolberg added the correct classification to each sample: benign or malignant [@dataset]. This report will revolve around determining whether this data set is well suited for the purpose of data mining and cleaning it up where needed.
 
@@ -65,7 +68,7 @@ To distinguish the malignant from the benign samples the practice of data mining
 
 \setcounter{table}{0}
 
-The data found in the *Breast Cancer Wisconsin (Original) Data Set* is described in Table \@ref(tab:attribute-info), it can be seen that every sample, also called an instance, is comprised of one sample code number, nine cytological characteristic scores and a class label. This data set has a total of 699 instances.
+The data found in the *Breast Cancer Wisconsin (Original) Data Set* is described in table \@ref(tab:attribute-info), it can be seen that every sample, also called an instance, is comprised of one sample code number, nine cytological characteristic scores and a class label. This data set has a total of 699 instances.
 
 
 ```{r attribute-info}
@@ -101,13 +104,13 @@ remove(attribute.info.temp)
 
 **Duplicated data**
 
-While inspecting the instances of the data set it became apparent that there were a lot of duplicated sample code numbers, even thought these are supposed to be unique. There are 100 instances that share their sample code number with at least 1 other instance and there are 46 sample code numbers that are found at least twice in the data set. In Table \@ref(tab:double-instances) and Table \@ref(tab:double-instances-2) all the instances with duplicated sample code numbers are displayed. In some cases not only the sample code number is duplicated, but every attribute of the instance is the exact same as another instance. In tables \@ref(tab:double-instances) and \@ref(tab:double-instances-2) the rows with the instances with sample code numbers that have an exact copy are colored red.
+While inspecting the instances of the data set it became apparent that there were a lot of duplicated sample code numbers, even thought these are supposed to be unique. There are 100 instances that share their sample code number with at least 1 other instance and there are 46 sample code numbers that are found at least twice in the data set. In table \@ref(tab:double-instances) and table \@ref(tab:double-instances-2) all the instances with duplicated sample code numbers are displayed. In some cases not only the sample code number is duplicated, but every attribute of the instance is the exact same as another instance. In tables \@ref(tab:double-instances) and \@ref(tab:double-instances-2) the rows with the instances with sample code numbers that have an exact copy are colored red.
 
 When inspecting these tables it can be seen that the duplicated data is sometimes in consecutive rows, but not always. It can also be seen that most of the instances with duplicated sample code numbers  have the same class label, but not always. Most duplicates come in pairs, but they also come in bigger groups, up to 6 instances with the same sample code number. Since no reason can be found as to why these double sample code numbers and instances exist, it can not be verified that these samples are not from the same origin. Therefore the choice has been made to remove all but one of every duplicate sample code number to guarantee the uniqueness of every sample.
 
 **Missing data**
 
-In Table \@ref(tab:missing-data) all the instances that have at least one missing attribute are shown. It can be seen that there are 16 instances that do not have a complete record, all of them missing the *Bare Nuclei* attribute. Since this concerns only a fraction of the total number of instances (less than $\frac{1}{40}$) and since it is undesirable that missing attributes will influence the data mining the choice has been made to delete these instances from the data set.
+In table \@ref(tab:missing-data) all the instances that have at least one missing attribute are shown. It can be seen that there are 16 instances that do not have a complete record, all of them missing the *Bare Nuclei* attribute. Since this concerns only a fraction of the total number of instances (less than $\frac{1}{40}$) and since it is undesirable that missing attributes will influence the data mining the choice has been made to delete these instances from the data set.
 
 **The order of removing data**
 
@@ -215,7 +218,7 @@ Ways to handle the unbalanced data while making a classifier include under-sampl
 
 When using over- or under-sampling techniques it is important to keep in mind that this will result in a bias in the model, this bias will cause the over-sampled class to be predicted too often. This bias will improve the performance of the classifier on the over-sampled class, but the overall performance will deteriorate due to this bias. To compensate for this bias a correction has to be built into the model, one way of using a correction is shown in [@class-distribution]. When using these techniques it is also important to keep in mind that class imbalance is a relative problem that does not only depend on the degree of class imbalance, but also on the complexity of the concept representing the data, the size of the training set and also on the classifier involved. When using a classifier that is not susceptible to the class imbalance problem the use of over- and under-sampling could hurt the classifier instead of helping it [@class-distribution2].
 
-In Figure \@ref(fig:class-distribution) the class distribution of the Breast Cancer Wisconsin (Original) Data Set can be seen before and after filtering. It can be seen that the data before filtering as well as the data after filtering seems to be unbalanced, it has a minority and majority class. However the data does not seem to be extremely unbalanced. It can also be seen that the data after the filtering step is slightly more balanced than before filtering. 
+In figure \@ref(fig:class-distribution) the class distribution of the Breast Cancer Wisconsin (Original) Data Set can be seen before and after filtering. It can be seen that the data before filtering as well as the data after filtering seems to be unbalanced, it has a minority and majority class. However the data does not seem to be extremely unbalanced. It can also be seen that the data after the filtering step is slightly more balanced than before filtering. 
 
 
 ```{r class-distribution_old, fig.cap="Distribution of the class attribute of the data before and after the filtering steps (the filtering steps are: removing rows with missing data, and than removing duplicated sample code numbers). The numbers in the bars are the actual number of instances in the data set.", include=F}
@@ -249,9 +252,9 @@ ggplot(class.distribution, aes_string(x = "class", y = "..prop..")) +
 ```{r class-distribution, fig.cap="Distribution of the class attribute of the data before and after the filtering steps (the filtering steps are: removing rows with missing data, and than removing duplicated sample code numbers). The numbers between parentheses are the actual number of instances in the data sets."}
 
 class.distribution %>%
-  count(class, filtered) %>%       
-  group_by(filtered) %>%
-  mutate(pct= prop.table(n) * 100) %>%
+  dplyr::count(class, filtered) %>%       
+  dplyr::group_by(filtered) %>%
+  dplyr::mutate(pct= prop.table(n) * 100) %>%
   ggplot(aes(x = factor(filtered), y = pct, fill=class)) +
   geom_bar(stat="identity") +
   ylab("Number of instances in dataset (in percentage)") +
@@ -272,9 +275,20 @@ class.distribution %>%
 
 *Attribute distributions*
 
-Test test test
+For the attributes to be useful for building a machine learning classifier it is important that the distributions for these attribute are discriminative for the different classes. The literature already states that the nine attributes involved in the *Breast Cancer Wisconsin (Original) Data Set* are significantly different between benign and malignant cases [@multisurface-pattern-separation]. Figure \@ref(fig:distribution-barplot) shows a visual representation of the attribute distributions for benign and malignant samples, as well as the distribution for all the samples together. When looking at this figure it is important to keep in mind that the majority class (the benign instances) have a bigger influence on the overall distribution than the minority class.
 
-```{r print-distribution-barplot, fig.height=10, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together",fig.pos="H"}
+All the attributes seem to be very differently distributed between the benign and malignant instances, except for the mitoses attribute. For both the benign and malignant cases the mitoses attribute most often has a score of 1. However when looking at the mitoses distribution of the malignant instances, there is a longer tail towards the higher score than the benign cases show, this might still be a significant difference.
+
+The seemingly (big) difference in distributions for all of these attributes is a positive sign for machine learning, all of these attributes could be useful in differentiating benign and malignant samples from one another.
+
+To verify that the difference is indeed significant for all the attributes a one-sided Mann–Whitney U test is executed for each attribute. The results of these tests and the corresponding p values can be found in table \@ref(tab:mann-whitney-tests). The tests have the following hypotheses:
+
+- Null hypothesis: the two samples (benign and malignant) come from the same population.
+- Alternative hypothesis: observations in the malignant sample tend to be higher than observations in the benign sample (the malignant sample is shifted to the right compared to the benign sample).
+
+With $\alpha = 0.05$ the null hypothesis is rejected for all the tests, and the alternative hypothesis is accepted. All of the differences might be significant, when looking at the estimate median of difference (that is the estimated median of the difference between all the observation from one sample and all the observations in another sample, and not the estimated difference in medians between the two samples) it is once again obvious that the difference in mitoses is quite small. The difference in all the other attributes seems quite large, especially the bare nuclei attribute. This could mean that the mitoses attribute is less useful for machine learning than the other attributes.
+
+```{r distribution-barplot, fig.height=8, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together",fig.pos="H"}
 
 long.data <- pivot_longer(data[,-1], 1:9)
 
@@ -300,6 +314,87 @@ ggplot(long.data, aes(x=value)) +
 
 ```
 
+```{r mann-whitney-tests}
+temp <- data.frame("attribute" = character(), "estimate" = double(), "pval" = double())
+
+temp.data <- data[2:11]
+
+temp.data$class <- relevel(temp.data$class, ref = "Malignant")
+
+for(attr in colnames(temp.data)[1:9]) {
+  res <- wilcox.test(
+    as.numeric(temp.data[,attr]) ~ temp.data$class, 
+    conf.int = TRUE, 
+    alternative = "greater"
+  )
+  
+  full.name <- attribute.info$full.name[attribute.info$name == attr]
+  temp <- rbind(temp, data.frame("attribute" = full.name, 
+                                 "estimate" = res$estimate,
+                                 "pval" = res$p.value))
+}
+
+row.names(temp) <- NULL;
+
+kbl(
+  temp, 
+  col.names = c("Attribute name", "Estimate median of difference", "P value"),
+  booktabs = T,
+  digits = c(100),
+  linesep = "",
+  caption = "Results of one-sided Mann–Whitney U test for each attribute where the null hypothesis is that the distribution of the malignant samples \\textbf{is not} higher than that of the benign samples. And the alterernative hypothesis is that the distribution of the Malignant samples \\textbf{is} higher than that of the benign samples. All of the p-values are well below 0.05 so we reject the null hypothesis for each attribute.",
+  escape = F
+) %>% 
+  kable_styling(latex_options = c("HOLD_position", "striped"))
+
+remove(temp, temp.data)
+```
+
+```{r attr-correlation-plot, fig.cap="Correlations between the attributes"}
+df <- data[2:11]
+
+for(i in 1:9) {
+  df[,i] <- as.numeric(df[,i])
+}
+colnames(df) <- attribute.info$full.name[-1]
+
+# Calculate  p values for correlation coefficients
+correlation.p.values.kendall <- cor_pmat(df[,1:9], method = "kendall")
+
+# Plot correlation coefficients for attributes
+ggcorrplot(
+  cor(df[,1:9], method = "kendall"),
+  type = "lower", 
+  outline.col = "white",
+  lab = TRUE,
+  p.mat = correlation.p.values.kendall
+) +
+  ggtitle("Correlation between the attributes")
+```
+```{r PCA-plot, fig.cap="Principal component analysis"}
+pca.res <- prcomp(df[1:9], scale. = TRUE, center = TRUE)
+
+# Get points to plot in PCA plot
+df.pca <- data.frame(pca.res$x, class=data$class)
+df.benign <- df.pca[df.pca$class == "Benign", ] 
+df.malignant <- df.pca[df.pca$class == "Malignant", ]
+
+# PCA plot
+ggbiplot::ggbiplot(pca.res, obs.scale = 1, var.scale = 1,
+  groups = data$class, ellipse = TRUE) +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+```
+
+```{r table-principal-components-rotations-scaled}
+kbl(
+    pca.res$rotation,
+    caption = "PCA: Rotation matrix of the 9 cytological characteristics to each principal component, scaled = TRUE", 
+    booktabs = T, 
+    linesep = ""
+  ) %>%
+  kable_styling(latex_options = c("striped", "scale_down", "HOLD_position")) %>%
+  column_spec(1:9, width = "2cm")
+```
 
 ```{r print-distribution-barplot_old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", fig.pos="H", include=F}
 
