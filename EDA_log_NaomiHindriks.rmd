@@ -45,7 +45,7 @@ To ensure the continued availability of the data and names files, they were copi
 
 
 ```{r load-attribute-info,  }
-attribute.info <- read.csv("attribute_info.csv", sep=";") 
+attribute.info <- read.csv("data/attribute_info.csv", sep=";") 
 
 attribute.info.temp <- data.frame(
   "Column" = attribute.info$column, 
@@ -83,7 +83,7 @@ str(data)
 ```
 
 The data has been loaded, but it can be seen that the column names were not included in the data file. Furthermore the data does not seem to be of the correct data type, columns 2-10 should all be (ordered) factors. 
-To give the columns the correct names and have easy access to the column descriptions I have created a simple csv file (attribute_info.csv).
+To give the columns the correct names and have easy access to the column descriptions I have created a simple csv file (data/attribute_info.csv).
 
 ```{r change-data-names-types,  }
 names(data) <- attribute.info$name

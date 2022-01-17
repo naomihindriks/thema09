@@ -72,7 +72,7 @@ The data found in the *Breast Cancer Wisconsin (Original) Data Set* is described
 
 
 ```{r attribute-info}
-attribute.info <- read.csv("attribute_info.csv", sep=";") 
+attribute.info <- read.csv("data/attribute_info.csv", sep=";") 
 
 attribute.info.temp <- data.frame(
   "Column" = attribute.info$column, 
