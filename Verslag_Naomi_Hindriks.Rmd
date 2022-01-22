@@ -1,5 +1,5 @@
 ---
-title: "Classifying Breast Cancer Benign or Malignnant"
+title: "Building a classifier with Weka for the Breast Cancer Wisconsin (Original) Data Set"
 author: "Naomi Hindriks"
 date: "10/25/2021"
 output:
