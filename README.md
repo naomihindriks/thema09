@@ -37,4 +37,5 @@ Data folder:
 ### Contact information ###
 
 Naomi Hindriks
+
 n.j.hindriks@st.hanze.nl
