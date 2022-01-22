@@ -15,16 +15,23 @@ header-includes:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
-library(kableExtra)
+knitr::opts_chunk$set(warning = FALSE)
+
 library(tidyr)
-library(ggplot2)
-library(scales)
-library(ggpubr)
-library(tidyverse)
-library(ggcorrplot)
-library(ggalt)
-library(ggbiplot)
+library(kableExtra)
 library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(scales)
+library(ggalt)
+library(ggcorrplot)
+library(forcats)
+library(patchwork)
+library(foreign)
+library(ggthemes)
+library(latex2exp)
+library(ggbiplot)
+
 ```
 
 \newpage
@@ -32,7 +39,7 @@ library(dplyr)
 # Abbreviations {-}
 
 ```{r abbreviations}
-abbreviations <- data.frame(abbreviations = c("FNA", "PCA"), full.name = c("Fine needle aspiration", "Principal component analysis"))
+abbreviations <- data.frame(abbreviations = c("AUC", "FNA", "PCA", "TNR", "TPR", "UCI", "Weka"), full.name = c("Area under the ROC curve", "Fine needle aspiration", "Principal component analysis", "True negative rate (specificity)", "True positive rate (sensitivity)", "University of California Irvine", "Waikato Environment for Knowledge Analysis"))
 
 kbl(
   abbreviations,
@@ -48,7 +55,7 @@ kbl(
 
 \newpage
 
-\setcounter{tocdepth}{2}
+\setcounter{tocdepth}{1}
 \tableofcontents
 
 \newpage
@@ -59,16 +66,27 @@ Breast cancer is a major health threat for women. In 2020 it was the most common
 
 Fine needle aspiration (FNA) is a type of biopsy used to collect a sample of cells from a lump or mass. This sample can be viewed under a microscope and different cytological characteristics can be observed. FNA is a cost-effective, fast and complication-free technique to investigate a lump or mass [@fna]. But even though some of the cytological characteristics observed with FNA show a statistical significant difference between benign and malignant samples, not one single characteristic can be used to accurately separate the benign from the malignant samples [@multisurface-pattern-separation]. If breast FNA samples are used to triage possible breast cancer patients it is of utmost importance to have a high level of certainty in determining which of the samples are malignant. It is very important not to classify a malignant sample as benign, as those patients will not go for further examination and treatment. The other way around, classifying a benign sample as malignant, is less disastrous, as the further examination of the patients will identify those samples as benign.
 
-To distinguish the malignant from the benign samples the practice of data mining might be able to help. Data mining is a modern technique used to find patterns in large batches of data. Between January of 1989 and November 1991 Dr. William H. Wolberg from the University of Wisconsin Hospitals has collected 699 breast FNA samples. Of these samples nine cytological characteristics were scored on a scale from 1 to 10 with 1 being the closest to benign and 10 being the most to anaplastic [@cytological-scoring-manual]. These nine characteristics are all considered to differ significantly between benign and malignant samples [@multisurface-pattern-separation]. In the *Breast Cancer Wisconsin (Original) Data Set* that  was assembled from this data, Dr. Wolberg added the correct classification to each sample: benign or malignant [@dataset]. This report will revolve around determining whether this data set is well suited for the purpose of data mining and cleaning it up where needed.
-
+To distinguish the malignant from the benign samples the practice of data mining might be able to help. Data mining is a modern technique used to find patterns in large batches of data. Between January of 1989 and November 1991 Dr. William H. Wolberg from the University of Wisconsin Hospitals has collected 699 breast FNA samples. Of these samples nine cytological characteristics were scored on a scale from 1 to 10 with 1 being the closest to benign and 10 being the most to anaplastic [@cytological-scoring-manual]. These nine characteristics are all considered to differ significantly between benign and malignant samples [@multisurface-pattern-separation]. In the *Breast Cancer Wisconsin (Original) Data Set* that  was assembled from this data, Dr. Wolberg added the correct classification to each sample: benign or malignant [@dataset]. This report will revolve around determining whether this data set is well suited for the purpose of data mining and cleaning it up where needed, and trying to make a suitable classifier based on this data.
 
 \newpage
 
-# Results
+# Materials & Methods
+
+For analyzing and cleaning the data as well as for building the machine learning classifier an assortment of materials and methods was use.
+
+## Materials
+
+The data that was being used for writing this report is the *Breast Cancer Wisconsin (Original) Data Set* [@dataset]. The data was collected by Dr. Wolberg between 1989 and 1991. It was later published on the *University of California Irvine (UCI) Machine Learning Repository Center for Machine Learning and Intelligent Systems*, where it was downloaded from to be used in this paper. The data set reports 9 attribute values, an ID code and a class label for the 699 instances it encompasses. Each attribute is a cytological characteristic scored on a scale from 1 to 10. The structure of the data is described in table \@ref(tab:attribute-info).
+
+To analyze the data the programming language R (version 4.0.4) [@r-lang] has been used. R is a programming language widely used for statistical analyses, data mining and data visualization. In table \@ref(tab:used-packages) the R packages that were used are listed.'
+
+
+For the development of a classifier, running the classifier on the data set, and evaluating the performance of the learning algorithms the Waikato Environment for Knowledge Analysis (Weka), version 3.8.4 [@weka] was used. 
+
+The Java programming language (Java SE 11) [@java] has been used to develop a command line interface application with which the classifier can be used by others. 
+
 
 \setcounter{table}{0}
-
-The data found in the *Breast Cancer Wisconsin (Original) Data Set* is described in table \@ref(tab:attribute-info), it can be seen that every sample, also called an instance, is comprised of one sample code number, nine cytological characteristic scores and a class label. This data set has a total of 699 instances.
 
 
 ```{r attribute-info}
@@ -91,7 +109,7 @@ kbl(
   kable_styling(latex_options = c("striped", "HOLD_position")) %>%
   column_spec(c(1,3), width = "1.5cm") %>%
   column_spec(2, width = "3cm") %>%
-  column_spec(4, width = "10cm") %>%
+  column_spec(4, width = "9.5cm") %>%
   add_footnote(
     label = c("The cytological characteristics of breast FNAs (seen in rows 2-10) get a score from 1 to 10 by an examining physician with 1 being the closest to benign and 10 the most anaplastic."),
     notation = "none",
@@ -102,19 +120,92 @@ kbl(
 remove(attribute.info.temp)
 ```
 
-**Duplicated data**
+## Existing methods
+
+Different existing methods have been used to analyze the data set, build a machine learning classifier and measure the performance of different classifiers.
+
+To test if the difference in class distribution is significant for the attributes the Mann–Whitney U test (also called the Mann–Whitney–Wilcoxon, Wilcoxon rank-sum test, or Wilcoxon–Mann–Whitney test) [@mann-whitney-test]. This is a non-parametric test that can be used for ordinal data to test that a randomly selected instance from one set of data has an equal probability to be greater than an instance from the second set of data.
+
+To assess the extent correlation between the different attributes the Kendall rank correlation coefficient [@kendall-1] [@kendall-2] (commonly referred to as Kendall's $\tau$ coefficient ) has been used. This choice was made since this test is appropriate for ordinal (it is a non-parametric test), and capable of handling ties.
+
+Another existing method that has been used is Principal component analysis (PCA) [@pca], PCA is a method to rotate the data so that the largest variance is captured on one axis, it can be used to reduce the dimensions of the data and show multidimensional data in a two dimensional plot.
+
+Different existing learning  algorithms have been tested to evaluate their effectiveness on the Breast Cancer Wisconsin (Original) Data Set. The algorithms that were used are included in Weka (version 3.8.4): ZeroR, OneR [@one-r], Naive Bayes classifier [@naive-bayes], simple logistic [@simple-logistic-1] [@simple-logistic-2], Support Vector Machines (SMO in Weka) [@smo-1] [@smo-2] [@smo-3], K-nearest neighbours (IBk in Weka) [@ibk], J48 decision tree [@j48]. Some meta classifiers were also used: Random Forest [@random-forest], AdaBoostM1 [@adaboost], bagging [@bagging], voting [@voting-1] [@voting-2] and cost-sensitive classification and cost-sensitive learning.
+
+Different measures have been used to asses the performance of the classifiers: accuracy, true positive rate (TPR), true negative rate (TNR), area under the ROC curve (AUC) and the $F_2$ score. Paired two sample *t*-tests [@t-test] were used to test the difference between the performance measure between the different classifiers.
+
+## Developed methods
+
+A combination of different learning algorithms (cost-sensitive, voting, Naive Bayes, IBk and Random Forest) were combined into a classifier that was trained with the Breast Cancer Wisconsin (Original) Data Set to classify new instances. The process in which this classifier was build can be found in Thema09: Building a classifier with Weka repository [@thema9-repo]. After the making of this classifier a command line application was build with Java to use the classifier with an easy command line interface. The application can be found in the Breast Cancer Classifier repository [@java-wrapper-repo].
+
+
+```{r used-packages}
+package.info <- data.frame(
+  package.name = c("tidyr", "kableExtra", "dplyr", "ggplot2", "ggpubr", "scales", "ggalt", "ggcorrplot", "forcats", "patchwork", "foreign", "ggthemes", "latex2exp", "ggbiplot"), 
+  version = c("1.1.4", "1.3.4", "1.0.7", "3.3.5", "0.4.0", "1.1.1", "0.4.0", "0.1.3", "0.5.1", "1.1.1", "0.8.82", "4.2.4", "0.5.0", "0.55"),
+  usage = c(
+  #tidyr
+    "Reshaping the data (e.g. from wide to long format)",
+  #kableExtra
+    "Formatting tables to present data", 
+  #dplyr
+    "Manipulating the data (e.g. grouping the data and calculating new values)", 
+  #ggplot2
+    "Making a visualization of the data in plots", 
+  #ggpubr
+    "Custumazition of ggplots", 
+  #scales
+    "Used for giving color to ggplots",
+  #ggalt
+    "Additional options for ggplot (e.g. encircling data in plot)", 
+  #ggcorrplot
+    "Visualization of correlation matricx for ggplot", 
+  #forcats
+    "Used for working with categorical data (ordering of factors)",
+  #patchwork
+    "Making plot compositions of ggplot plots", 
+  #foreign
+    "Reading and writing ARFF files (data from Weka)",
+  #ggthemes
+    "Used for getting colors for ggplot", 
+  #latex2exp
+    "Parsing of LaTeX math formulas to R’s plotmath expressions, to be used as titles/labels in ggplots.",
+  #ggbiplot
+    "Used for making principal component ggplot")
+)
+
+kbl(
+  package.info,
+  col.names = c("Package name", "Version", "Usage description"),
+  booktabs = T,
+  linesep = "",
+  longtable = T,
+  caption = "R packages used for analyzing, manipulating and visualizing data"
+) %>%
+  kable_styling(latex_options = c("striped")) %>%
+  column_spec(1, width = "3.5cm") %>%
+  column_spec(2, width = "3cm") %>%
+  column_spec(3, width = "9.5cm")
+```
+
+
+\newpage
+
+# Results
+
+## Duplicated data
 
 While inspecting the instances of the data set it became apparent that there were a lot of duplicated sample code numbers, even thought these are supposed to be unique. There are 100 instances that share their sample code number with at least 1 other instance and there are 46 sample code numbers that are found at least twice in the data set. In table \@ref(tab:double-instances) and table \@ref(tab:double-instances-2) all the instances with duplicated sample code numbers are displayed. In some cases not only the sample code number is duplicated, but every attribute of the instance is the exact same as another instance. In tables \@ref(tab:double-instances) and \@ref(tab:double-instances-2) the rows with the instances with sample code numbers that have an exact copy are colored red.
 
 When inspecting these tables it can be seen that the duplicated data is sometimes in consecutive rows, but not always. It can also be seen that most of the instances with duplicated sample code numbers  have the same class label, but not always. Most duplicates come in pairs, but they also come in bigger groups, up to 6 instances with the same sample code number. Since no reason can be found as to why these double sample code numbers and instances exist, it can not be verified that these samples are not from the same origin. Therefore the choice has been made to remove all but one of every duplicate sample code number to guarantee the uniqueness of every sample.
 
-**Missing data**
+## Missing data 
 
 In table \@ref(tab:missing-data) all the instances that have at least one missing attribute are shown. It can be seen that there are 16 instances that do not have a complete record, all of them missing the *Bare Nuclei* attribute. Since this concerns only a fraction of the total number of instances (less than $\frac{1}{40}$) and since it is undesirable that missing attributes will influence the data mining the choice has been made to delete these instances from the data set.
 
-**The order of removing data**
+## The order of removing data
 
-The missing data will be removed from the data set before the instances with duplicated sample code numbers are removed. This is done so that when one of the instances with a duplicated sample code number has missing data the other instance of this sample code number can be kept in the data. If it were to be done the other way around it could happen that an instances with a duplicated sample code number with a full record would be removed and an instance with missing data kept in the data, only for the instance with the missing data to be removed in the next processing step. After these filtering steps there are 630 instances left in the data set.
+The missing data will be removed from the data set before the instances with duplicated sample code numbers are removed. This is done so that when one of the instances with a duplicated sample code number has missing data the other instance of this sample code number can be kept in the data. If it were to be done the other way around it could happen that an instance with a duplicated sample code number with a full record would be removed and an instance with missing data kept in the data, only for the instance with the missing data to be removed in the next processing step. After these filtering steps there are 630 instances left in the data set.
 
 
 ```{r load-data}
@@ -208,9 +299,9 @@ data <- data[!duplicates, ]
 ```
 
 
-**Data distribution**
+## Data distribution
 
-*Class distribution*
+### Class distribution
 
 It is important to look at the class distribution because studies have shown that the distribution of the class labels can have an effect on classifier learning, and that the natural class distribution does not always give the best classifiers [@class-distribution][@class-distribution2]. According to [@class-distribution] there are several explanations for why the minority class generally has a higher error rate than the majority class when using unbalanced data while training a classifier.
 
@@ -273,7 +364,7 @@ class.distribution %>%
 ```
 
 
-*Attribute distributions*
+### Attribute distributions
 
 For the attributes to be useful for building a machine learning classifier it is important that the distributions for these attribute are discriminative for the different classes. The literature already states that the nine attributes involved in the *Breast Cancer Wisconsin (Original) Data Set* are significantly different between benign and malignant cases [@multisurface-pattern-separation]. Figure \@ref(fig:distribution-barplot) shows a visual representation of the attribute distributions for benign and malignant samples, as well as the distribution for all the samples together. When looking at this figure it is important to keep in mind that the majority class (the benign instances) have a bigger influence on the overall distribution than the minority class.
 
@@ -286,7 +377,7 @@ To verify that the difference is indeed significant for all the attributes a one
 - Null hypothesis: the two samples (benign and malignant) come from the same population.
 - Alternative hypothesis: observations in the malignant sample tend to be higher than observations in the benign sample (the malignant sample is shifted to the right compared to the benign sample).
 
-With $\alpha = 0.05$ the null hypothesis is rejected for all the tests, and the alternative hypothesis is accepted. All of the differences might be significant, when looking at the estimate median of difference (that is the estimated median of the difference between all the observation from one sample and all the observations in another sample, and not the estimated difference in medians between the two samples) it is once again obvious that the difference in mitosis is quite small. The difference in all the other attributes seems quite large, especially the bare nuclei attribute. This could mean that the mitosis attribute is less useful for machine learning than the other attributes.
+With $\alpha = 0.05$ the null hypothesis is rejected for all the tests, and the alternative hypothesis is accepted. All of the differences might be significant, when looking at the estimate median of difference (that is the estimated median of the difference between all the observations from one sample and all the observations in another sample, and not the estimated difference in medians between the two samples) it is once again obvious that the difference in mitosis is quite small. The difference in all the other attributes seems quite large, especially the bare nuclei attribute. This could mean that the mitosis attribute is less useful for machine learning than the other attributes.
 
 ```{r distribution-barplot, fig.height=8, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together",fig.pos="H"}
 
@@ -350,7 +441,12 @@ kbl(
 remove(temp, temp.data)
 ```
 
-```{r attr-correlation-plot, fig.cap="Correlations between the attributes"}
+## Correlation between attributes
+
+It is important to investigate the correlation between the attributes as some machine learning algorithms, Naive Bayes for example, can be influenced by this correlation. In figure \@ref(fig:attr-correlation-plot) it can be seen that all the attribute in the data set have a positive correlation score. The correlation score shown in the figure is the Kendall $\tau_{b}$ rank correlation coefficient. The strength of the correlation is moderate (0.33 between mitoses and bland chromatin) to strong (0.82 between uniformity of cell shape and uniformity of cell size). This correlation can be problematic for algorithms that make assumptions about the independence of the attributes. Naive Bayes does assume that the attributes are independent. The calculations done by the Naive Bayes algorithm are based on calculations with conditional probability that are not accurate when the attributes depend on each other. Also important to note is that all the correlation coefficients that were calculated had a p value below 0.05, and can thus be considered significant. These p values can be found in the log file available in the Thema09: Building a classifier with Weka repository [@thema9-repo].
+
+
+```{r attr-correlation-plot, fig.cap="Correlations coefficient (Kendall's $\\tau_{b}$) scored between the attribute Breast Cancer Wisconsin (Original) Data Set in the between the attributes. The p value is calculated, and if the correlation is not significant, the in the plot show an X in the corresponding square."}
 df <- data[2:11]
 
 for(i in 1:9) {
@@ -369,9 +465,18 @@ ggcorrplot(
   lab = TRUE,
   p.mat = correlation.p.values.kendall
 ) +
-  ggtitle("Correlation between the attributes")
+  labs(title = "Correlation between the attributes") +
+  guides(fill = guide_colorbar(title="Correlation coefficient"))
 ```
-```{r PCA-plot, fig.cap="Principal component analysis"}
+
+## Principal component Analysis
+
+To visualize the data in a two dimensional plot a PCA is done. The PCA makes it possible to capture most of the variance of the nine dimensional data in two dimensions, the first and the second principal component (PC1 and PC2). During PCA calculations are done that give the rotation that the the multidimensional data needs to undergo to get the principal components. PC1 is the direction in which the most variance is captured, PC2 will be perpendicular to PC1 and explain the second most variance, PC3 will be perpendicular to PC1 and PC2 and explains the third most variance and so on, in total there are the same amount of PC's as there are dimensions in the data. The rotation matrix that was the outcome of the PCA is shown in table \@ref(tab:table-principal-components-rotations). Looking at this table shows how much each attribute contributed to each PC. The higher the absolute value of the rotation on a specific PC by a specific attribute tells how much that attribute contributes to this PC and how much this attributes is correlated with that PC. In the matrix it can be seen that all the attribute contribute roughly evenly to PC 1, except for mitosis. Mitoses contributes less to PC1, but dominates PC2. Mitoses is also the attribute that has a weakest correlation to the other attributes. 
+
+In figure \@ref(fig:PCA-plot) a plot is show of PC1 and PC2 of the data set. The arrows show the different attributes, the arrow of mitosis is much more vertical than any of the other attributes, which shows ones again how it dominates PC2, but does not have as much of an influence in PC1. The instances are colored according to their class label. This coloring shows that these groups of instances are fairly distinct, which might indicate that this data set is well suited for machine learning.
+
+
+```{r PCA-plot, fig.cap="Principal component 1 and principal component 2 of the Breast Cancer Wisconsin (Original) Data Set. The instances are coloured according to their class label. The attributes that are present in the data set are shown with arrows."}
 pca.res <- prcomp(df[1:9], scale. = TRUE, center = TRUE)
 
 # Get points to plot in PCA plot
@@ -382,13 +487,15 @@ df.malignant <- df.pca[df.pca$class == "Malignant", ]
 # PCA plot
 ggbiplot::ggbiplot(pca.res, obs.scale = 1, var.scale = 1,
   groups = data$class, ellipse = TRUE) +
-  theme(legend.direction = 'horizontal', legend.position = 'top')
+  scale_color_discrete(name = "Class label") +
+  labs(title = "PCA analyses on the Breast Cancer Wisconsin (Original) Data Set")
 ```
 
-```{r table-principal-components-rotations-scaled}
+
+```{r table-principal-components-rotations}
 kbl(
     pca.res$rotation,
-    caption = "PCA: Rotation matrix of the 9 cytological characteristics to each principal component, scaled = TRUE", 
+    caption = "PCA: Rotation matrix of the 9 cytological characteristics to each principal component", 
     booktabs = T, 
     linesep = ""
   ) %>%
@@ -396,75 +503,219 @@ kbl(
   column_spec(1:9, width = "2cm")
 ```
 
-```{r print-distribution-barplot_old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", fig.pos="H", include=F}
+\newpage
 
-plot.list <- list()
+## The classifier
 
-for(attr in colnames(data)[2:10]) {
-  new.plot <- ggplot(data, aes_string(x = attr, y = "..prop..", group = 1)) +
-    geom_bar(aes(fill="Both classes"), alpha = 0.8) +
-    geom_bar(
-      aes(fill = class, group = class), 
-      position = position_dodge2(preserve = "single"), 
-      alpha = 0.8
-      ) +
-    scale_y_continuous(labels = scales::percent_format()) +
-    scale_fill_manual(
-      name = "Class", 
-      values = c("grey50", hue_pal()(2)), 
-      breaks = c("Both classes", "Benign", "Malignant"), 
-      labels = c("Both classes", "Benign", "Malignant")
-    ) +
-    xlab(
-      paste(
-        attribute.info$full.name[attribute.info$name == attr], 
-        "scored on a scale from 1 to 10"
-        )
-      ) + 
-    ylab("Percentage of instances")
-  
-  leg <- get_legend(new.plot)
-  
-  plot.list[[attr]] <- new.plot + theme(legend.position = "none")
+While building the classifier an assortment of machine learning algorithms were tested on the data set. The test were done in the Weka Experimenter using 10-fold cross validation and 10 repetitions for the tests. An in depth description of which algorithms were tested and their evaluation can be found in the EDA_log_NaomiHindriks.pdf file that is available in the Thema09: Building a classifier with Weka repository [@thema9-repo]. In this log file a description can be found of how the final classifier, that reached an accuracy of over 98%, was build.
+
+The final algorithm is assembled with a cost sensitive learning algorithm (giving 5 times as much weight to the false negative over the false positives) applied to a voting ensemble learner. That ensemble learner lets the following algorithms vote: IBk (with KNN = 2), Naive Bayes (with useSupervisedDiscretization = True) and Random Forest (with default settings in Weka). The quality metrics that were calculated for this algorithm can be found in table \@ref(tab:voting-cost-results). In this table it can be seen that the classifier reaches an accuracy of 98.048%, an AUC of 0.994, and an $F_2$ score of 0.987. While running the test on the data set using 10-fold cross validation on average over 10 runs the classifier only gave 1 false negative result. 
+
+In figure \@ref(fig:roc-curve) the ROC curve of this algorithm can be seen. In this figure it can be seen that the TPR can even get one step higher if the threshold was changed. That one step higher would mean 0 false negatives and a TPR of 1. This is achieved around a true positive rate of around 0.8 (on the x axis around 0.2 false positive rate). Setting the algorithm to this threshold would mean never missing a malignant sample in the filtered Breast Cancer Wisconsin (Original) Data Set. It would also mean that 20 % of benign samples would be classified as malignant.
+
+
+```{r voting-cost-results}
+
+f.2.score <- function (TP, FP, FN) {
+  recall <- mean(TP / (TP + FN))
+  precision <- mean(TP / (TP + FP))
+  score <- 5 * ((precision * recall) / (4 * precision + recall))
+  return(score)
 }
 
-plot.list[["leg"]] <- leg
+weka.experiment <- read.arff("data/weka_experiment_voting_cost.arff")
 
-p <- ggarrange(plotlist = plot.list, ncol = 2, nrow = 5) 
-
-annotate_figure(
-  p, 
-  top = text_grob(
-    "Distribution of cytological characteristics scores", 
-    face = "bold", 
-    size = 14
-  )
+weka.experiment$Algorithm <- factor(
+  rep(c("Voting", "Voting, cost sensitive learning 1:5", "Voting, cost sensitive classifier 1:5"), each = 100),
+  levels = c("Voting", "Voting, cost sensitive learning 1:5", "Voting, cost sensitive classifier 1:5")
 )
-```
+
+weka.experiment <- subset(weka.experiment, subset = weka.experiment$Algorithm == "Voting, cost sensitive learning 1:5")
+
+weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
+  f.2.score(
+    as.numeric(row["Num_true_positives"]), 
+    as.numeric(row["Num_false_positives"]), 
+    as.numeric(row["Num_false_negatives"]))
+  }
+)
 
 
-```{r, include=F}
-vars <- apply(data[c(-1, -ncol(data))], 2, var)
-attr.names <- attribute.info[attribute.info$name %in% names(vars),][,c("full.name", "name")]
+by_run <- weka.experiment %>%
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
+    Algorithm = first(Algorithm),
+    Key_Run = first(Key_Run),
+    Num_true_positives = sum(Num_true_positives),
+    Num_false_positives = sum(Num_false_positives),
+    Num_false_negatives = sum(Num_false_negatives),
+    Num_true_negatives = sum(Num_true_negatives),
+    N = sum(Num_true_positives, Num_false_positives, Num_false_negatives,Num_true_negatives),
+    Percent_correct = ((Num_true_positives + Num_true_negatives) / N) * 100,
+    True_positive_rate = (Num_true_positives / (Num_true_positives + Num_false_negatives)),
+    True_negative_rate = (Num_true_negatives / (Num_true_negatives + Num_false_positives)),
+    Elapsed_Time_training = sum(Elapsed_Time_training),
+    Elapsed_Time_testing = sum(Elapsed_Time_testing),
+    Area_under_ROC = mean(Area_under_ROC),
+    F_2_score = f.2.score(Num_true_positives, Num_false_positives, Num_false_negatives)
+  )
 
-var.per.attr.df = data.frame(attr.name = attr.names$full.name, vars = vars[attr.names$name])
+summarized <- by_run %>%
+  dplyr::group_by(Algorithm) %>%
+  dplyr::summarize(
+    .groups = "keep",
+    "Training time" = mean(Elapsed_Time_training), 
+    "Testing time" = mean(Elapsed_Time_testing), 
+    ACC = format(round(mean(Percent_correct), digits = 3), nsmall = 3),
+    TP = format(round(mean(Num_true_positives), digits = 2), nsmall = 2), 
+    FP = format(round(mean(Num_false_positives), digits = 2), nsmall = 2),
+    TN = format(round(mean(Num_true_negatives), digits = 2), nsmall = 2),
+    FN = format(round(mean(Num_false_negatives), digits = 2), nsmall = 2),
+    TPR = format(round(mean(True_positive_rate), digits = 3), nsmall = 3),
+    TNR = format(round(mean(True_negative_rate), digits = 3), nsmall = 3),
+    AUC = format(round(mean(Area_under_ROC), digits = 3), nsmall = 3),
+    F2 = format(round(mean(F_2_score), digits = 3), nsmall = 3))
+
 
 kbl(
-  var.per.attr.df,
-  caption = "Variance per attribute",
+  subset(summarized),
   row.names = F,
-  col.names = c("Attribute", "Variance"),
-  booktabs = T,
+  col.names = c("Settings", "Training", "Testing", 
+                "ACC", "TP", "FP", "TN", "FN", 
+                "TPR", "TNR", "AUC", "$F_2$"),
+  caption = "Results of experiment run in Weka Experimenter of the classifier (cost sensitive learning applied to a voting ensemble learner letting the following algorithms vote: IBk (with KNN = 2), Naive Bayes (with useSupervisedDiscretization = True) and Random Forest). The classifier was used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
+  booktabs = T, 
   linesep = "",
-  digits = 3) %>%
-  kable_styling(latex_options = c("striped", "HOLD_position")) %>%
-  column_spec(1:2, width = "7cm")
+  longtable = T,
+  escape = FALSE
+) %>%
+  add_header_above(c(" " = 1, "Time" = 2, " " = 1, "Confusion matrix" = 4, " " = 4)) %>%
+  kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
+  column_spec(1, width = "2.5cm") %>%
+  column_spec(c(2:3, 8:11), width = "1cm") %>%
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
+
+```{r roc-curve, fig.cap="ROC curve of most optimized classifier algorithm use on the filtered Breast Cancer Wisconsin (Original) Data Set. The algorithm that is used is a classifier made and run in the Weka Explorer: the cost sensitive learning algorithm (cost 1:5 for FP:FN) wrapping the voting algorithm. The algorithms that are used for voting are: the IBk (KNN = 2) algorithm, the Naive Bayes (useSupervisedDiscretization = True) and the Random Forest algorithm."}
+
+ROC <- read.arff("data/ROC.arff")
+
+colors <- colorblind_pal()(3);
+
+ggplot(ROC, aes(x = `False Positive Rate`, y =`True Positive Rate`)) +
+  geom_point(aes(color = Threshold)) +
+  labs(title = "ROC curve") +
+  scale_colour_gradient(
+  low = colors[3],
+  high = colors[2],
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "colour"
+)
+
+```
+
+In figure \@ref(fig:learning-curve) a couple of learning curves of the algorithm can be seen. It shows how much the quality metrics increase when the algorithm is trained on more data. It can be seen that accuracy, AUC and $F_2$ score pretty high scores even when training with only 25% of the training data, but that the FNR score seems to have a clear downward trend even between 50 to 100%. This probably reflect that using less data will miss more of the border cases that are malignant. Since the algorithm does not take a large amount of time to train, or to test data (see table \@ref(tab:voting-cost-results)), it is probably wise to use all the data for training and maybe even collect more data for training to enhance the performance of the algorithm even more. Using more data will probably make the algorithm slower in testing, due to the usage of the IBk algorithm. This algorithm will check the distance to each training instance for a newly presented instance. But since diagnosing breast cancer won't stand or fall with an extra minute, hour or even day of testing time, it could be interesting how the algorithm would perform when presented with more training data.
+
+```{r learning-curve, fig.cap="Different quality metrics scored for different percentages of the trainingset used. Results are from the optimal algorithm run in the Weka Experimenter using 10-fold cross validation and number of repititions set to 10"}
+
+weka.experiment <- read.arff("data/weka_experiment_learing_curve.arff")
+
+weka.experiment$percent_used <- rep(c(seq(from = 100, to = 5, length.out = 20), 1), each = 100)
+
+weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
+  f.2.score(
+    as.numeric(row["Num_true_positives"]), 
+    as.numeric(row["Num_false_positives"]), 
+    as.numeric(row["Num_false_negatives"]))
+  }
+)
+
+by_run <- weka.experiment %>%
+  dplyr::group_by(Key_Run, percent_used) %>%
+  dplyr::summarise(
+    .groups = "keep",
+    percent_used = first(percent_used),
+    Key_Run = first(Key_Run),
+    Num_true_positives = sum(Num_true_positives),
+    Num_false_positives = sum(Num_false_positives),
+    Num_false_negatives = sum(Num_false_negatives),
+    Num_true_negatives = sum(Num_true_negatives),
+    N = sum(Num_true_positives, Num_false_positives, Num_false_negatives,Num_true_negatives),
+    Percent_correct = ((Num_true_positives + Num_true_negatives) / N) * 100,
+    True_positive_rate = (Num_true_positives / (Num_true_positives + Num_false_negatives)),
+    True_negative_rate = (Num_true_negatives / (Num_true_negatives + Num_false_positives)),
+    Elapsed_Time_training = sum(Elapsed_Time_training),
+    Elapsed_Time_testing = sum(Elapsed_Time_testing),
+    Area_under_ROC = mean(Area_under_ROC),
+    F_2_score = f.2.score(Num_true_positives, Num_false_positives, Num_false_negatives)
+  )
+
+summarized <- weka.experiment %>%
+  dplyr::group_by(percent_used) %>%
+  dplyr::summarise(
+    .groups = "keep",
+    "Training time" = mean(Elapsed_Time_training), 
+    "Testing time" = mean(Elapsed_Time_testing), 
+    ACC = mean(Percent_correct),
+    TP = mean(Num_true_positives), 
+    FP = mean(Num_false_positives),
+    TN = mean(Num_true_negatives),
+    FN = mean(Num_false_negatives),
+    TPR = mean(True_positive_rate),
+    TNR = mean(True_negative_rate),
+    AUC = mean(Area_under_ROC),
+    F2 = mean(F_2_score))
+
+
+data <- subset(summarized, select = c(percent_used, ACC, AUC, F2, FN))
+long.data <- pivot_longer(data, 2:5, names_to = "quality_metric")
+
+long.data$quality_metric <- factor(long.data$quality_metric) 
+levels(long.data$quality_metric) = c(ACC=TeX("Accuracy (%)"), AUC=TeX("AUC"), F2=TeX('$F_2$ score'), FN=TeX("Number of false negatives"))
+
+ggplot(long.data, aes(x = percent_used, y=value)) +
+  geom_point() +
+  geom_smooth(
+    method = loess, 
+    se=FALSE,
+     formula= y ~ x
+  ) +
+  expand_limits(x = 0, y = 0) +
+  facet_wrap(
+    quality_metric ~ .,
+    ncol =2,
+    scales = "free",
+    labeller = label_parsed
+  ) +
+  labs(
+    title = "Learning curves",
+    x = "Percentage of training set used"
+  )
+```
 
 \newpage
 
 # Discussion & Conclusion
+
+During the analyses of the data it turned out that there were a lot of weird duplications going on. It is important that these duplications were filtered out for the validity of the classifier that was build, if they were not filtered out some samples might have had more influence on the classifier than they deserved. When looking at the distribution of the attributes it was shown that the malignant distribution significantly differed from the benign distribution. A moderate to strong correlation was found between the different attributes. During the PCA a PC plot (pf PC1 and PC2) was made that clearly showed two distinct clusters of data.
+
+The final algorithm is set to a threshold so that it is very close to the (0, 1) coordinate, which means that it only miss classifies 1 malignant sample as benign out of the whole data set. This and the other quality metrics of the classifier might seem very pleasing, but it is important to keep in mind that while diagnosing cancer the lives of actual people are at stake. Miss diagnosing 1 in 230 malignant cases in the small Breast Cancer Wisconsin (Original) Data Set might seem very good, but miss diagnosing this rate of women out of the 2,261,419 new cases of diagnosed female breast cancer per year would mean missing `r round(2261419 * (1 /230))` cases of breast cancer, quite possibly resulting in premature death of this massive amount of women. This means that it is ALWAYS important to not use this classifier as a sole diagnostic tool, but always be aware of other possible signs of malignancy. 
+
+Even though an assortment of algorithms have been tested on this data set, there are a lot more machine learning algorithms, and settings for these algorithms that might work better on this data set, or can be added to the voting algorithm used to increase the performance of this classifier. The search for the optimal algorithm used for the classifier was not an exhaustive one, merely an indication of how good these nine cytological characteristics can be in diagnosing breast cancer.
+
+In the data used in this report there was no record of different types of cancer. It would be interesting to see if the type of cancer could be predicted by these nine cytological characteristics as well. Another interesting attribute would be if the benign samples would later turn into malignant samples, and how long it would take to turn malignant, this could especially be useful for the border cases, if it turns out that most of the border cases would later turn out to become malignant early intervention could even prevent these women from developing cancer. It would also be interesting to see if other cytological characteristics of the FNA samples could be found that are also predictors for malignancy and could enhance the performance of this classifier further.
+
+\newpage
+
+# Minor proposal
+
+For the minor Application Design it could be interesting to build a web application with which this classifier can be used. Right now there is only a command line application available to use this classifier. A lot of people that are not bioinformaticians might not be so comfortable to use a command line interface. For them it would be useful to make a web application with a clear and friendly user interface where they can classify their own instances without being scared away by technical stuff. This would also have the advantage that the users of the web application do not have to download an application, they could simply visit a website. This could especially be useful for doctors involved in the diagnoses of breast cancer. 
+
+In this web app the instance could be filled in with a simple text field or an ARFF file could be submitted (just like the command line application). Then the website should return the classification of the instance(s) and report on the probability that this classification is correct. When an ARFF file is submitted more statistics of the classified instances can be shown on the web application (for example the percentage of instances in the file that is classified as benign or malignant). Another feature that could be added to this web application is that users are able to make an account on the website and save results, so they can be viewed later or shared with other people.
 
 \newpage
 

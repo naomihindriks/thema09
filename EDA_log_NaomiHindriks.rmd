@@ -15,20 +15,20 @@ header-includes:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library("rstatix")
+knitr::opts_chunk$set(warning = FALSE)
 library("tidyr")
 library("kableExtra")
 library("dplyr")
 library("ggplot2")
 library("ggpubr")
 library("scales")
-library("ggfortify")
 library("ggalt")
 library("ggcorrplot")
 library("forcats")
-library("caret")
 library("patchwork")
 library("foreign")
+library("ggthemes")
+library("latex2exp")
 ```
 
 # EDA : Breast Cancer Wisconsin (Original) Data Set
@@ -259,9 +259,9 @@ class.distribution <- data.frame(
   class = c(as.character(unfiltered.data$class), as.character(data$class)))
 
 
-d1 <-  class.distribution %>% group_by(filtered, class) %>%             
+d1 <-  class.distribution %>% dplyr::group_by(filtered, class) %>%             
   tally %>% 
-  bind_rows(class.distribution %>% group_by(filtered) %>%
+  bind_rows(class.distribution %>% dplyr::group_by(filtered) %>%
       tally %>%
       mutate(class="Total")) %>%
   mutate(pct = round(n/((sum(n)/2))*100)) %>%
@@ -304,6 +304,7 @@ I will make bar plots to show the distribution of the cytological characteristic
 
 
 ```{r attr-distribution-barplot-old, fig.height=12, fig.width=10, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together", include=F,  }
+
 long.data <- pivot_longer(data, 2:10)
 
 names.labs <- attribute.info$full.name
@@ -335,6 +336,7 @@ ggplot(long.data, aes_string(x = 'value', y = "..prop..", group = 1)) +
 ```
 
 ```{r attr-distribution-barplot, fig.height=10, fig.width=8, fig.cap="Distribution of data in percentage for 9 different cytological characteristics for benign instances, malignant instances and for all instances together",  }
+
 long.data <- pivot_longer(data, 2:10)
 
 names.labs <- attribute.info$full.name
@@ -357,7 +359,7 @@ ggplot(long.data, aes(x=value)) +
   facet_grid(
     name ~ class, 
     scales = "free", 
-    margin = "class", 
+    margin = "class",
     labeller = labeller(name = names.labs)
   ) +
   theme(legend.position = "bottom", strip.text.y = element_blank())
@@ -437,7 +439,7 @@ In *Table \@ref(tab:mann-whitney-tests)* the results of one-sided Mann-Whitney U
 Now I will look at the correlation between the different attributes. My expectation is that some or all of the attributes will be positively correlated because the scores of the attributes range from 1 to 10, with 1 being the closest to benign and 10 the most anaplastic. This means that if the sample is benign, all or most of the scores will be 1 or close to 1, and if the sample is malignant the scores will tend to be higher than 1. This idea is also supported by the fact that for all the attributes the distributions of the malignant samples were significantly shifted to the right compared to the benign distributions, they all shift in the same direction. For calculating the correlation score I will not use the Pearson method, as it makes the assumption that the data is normally distributed, in this case the data is not normally distributed, so I will have to find a different method. I have chosen to use Kendall $\tau_{b}$ rank correlation as seems to be better at handling ties.
 
 
-```{r attr-correlation-plot, fig.cap="Correlations between the attributes",  }
+```{r attr-correlation-plot, fig.cap="Correlations between the attributes"}
 df <- data
 
 for(i in 2:10) {
@@ -460,7 +462,7 @@ ggcorrplot(
 ```
 
 
-```{r attr-correlation-p-value,  }
+```{r attr-correlation-p-value}
 # Print p values in table
 kbl(
   correlation.p.values.kendall,
@@ -635,7 +637,7 @@ kbl(
 
 Now it is time for the fun part: interpreting the results of the PCA's. In the PCA plots in *Figure \@ref(fig:scree-pca-plots)* it can be seen that with or without scaling, the benign and malignant samples clearly form two distinct clusters, this is a positive sign for making a classifier for this data. The in the unscaled plot the clusters might seem a bit more distinct than in the scaled plot.
 
-In the scaled PCA plot (top right) the variance in the second principal component seems to represent a small amount of instances. This second component does seem to say something about malignancy, you can see that only 3 benign instances are higher than -2, a lot more malignant instances are in this area (even though benign is the majority class). Looking at *Table \@ref(tab:table-principal-components-rotations-scaled)* we can observe that the second component is dominated by the mitosis attribute. Comparing the second principle component to the distribution of mitosis in *Figure \@ref(fig:attr-distribution-barplot)* the distribution of the second component makes sense, most of the instances have a mitosis of 1, but from the instances that have a mitosis score higher than 1 most of them are malignant.
+In the scaled PCA plot (top right) the variance in the second principal component seems to represent a small amount of instances. This second component does seem to say something about malignancy, you can see that only 3 benign instances are higher than 2, a lot more malignant instances are in this area (even though benign is the majority class). Looking at *Table \@ref(tab:table-principal-components-rotations-scaled)* we can observe that the second component is dominated by the mitosis attribute. Comparing the second principle component to the distribution of mitosis in *Figure \@ref(fig:attr-distribution-barplot)* the distribution of the second component makes sense, most of the instances have a mitosis of 1, but from the instances that have a mitosis score higher than 1 most of them are malignant.
 
 In the unscaled PCA plot (bottom right) principal component 1 seems to have a dividing line between benign and malignant at around -2.5. On principal component 2 the benign instances seem to be concentrated around 0 and the malignant instances are more dispersed.
 
@@ -795,8 +797,9 @@ f.2.score <- function (TP, FP, FN) {
 }
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm, Cost) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm, Cost) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Cost = first(Cost),
     Key_Run = first(Key_Run),
@@ -815,7 +818,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm, Cost) %>%
+  dplyr::group_by(Algorithm, Cost) %>%
   summarize(
     .groups = "keep", 
     "Training time" = mean(Elapsed_Time_training), 
@@ -847,7 +850,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "1.2cm") %>%
   column_spec(c(2:4, 9:12), width = "1cm") %>%
-  footnote(general = c("Cost = the cost of FN:FP",  "ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("Cost = the cost of FN:FP",  "ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 
 ```
 
@@ -870,8 +873,9 @@ weka.experiment <- read.arff("data/weka_experiment_IBK_crossValidate.arff")
 weka.experiment$Key_Run <- factor(weka.experiment$Key_Run, levels = 1:10)
 
 KNN_summarised <- weka.experiment %>%
-  group_by(Key_Run) %>%
-  summarise(
+  dplyr::group_by(Key_Run) %>%
+  dplyr::summarise(
+    .groups = "keep",
     most_common_KNN = as.numeric(names(sort(table(measureKNN), decreasing = T)[1])),
     count_most_common_KNN = sort(table(measureKNN), decreasing = T)[1],
     mean_KNN = mean(measureKNN),
@@ -953,8 +957,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 by_run
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -972,7 +977,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     .groups = "keep", 
     "Training time" = mean(Elapsed_Time_training), 
@@ -1002,7 +1007,7 @@ kbl(
   add_header_above(c(" " = 1, "Time" = 2, " " = 1, "Confusion matrix" = 4, " " = 4)) %>%
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(c(1:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 
 ```
 
@@ -1036,8 +1041,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 )
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1055,7 +1061,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     .groups = "keep", 
     "Training time" = mean(Elapsed_Time_training), 
@@ -1086,7 +1092,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 
 ```
 
@@ -1118,8 +1124,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1137,7 +1144,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1167,7 +1174,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 
 ```
 ```{r}
@@ -1199,8 +1206,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1218,8 +1226,8 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
-  summarize(
+  dplyr::group_by(Algorithm) %>%
+  dplyr::summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
     ACC = format(round(mean(Percent_correct), digits = 3), nsmall = 3),
@@ -1248,7 +1256,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 
 ```
 
@@ -1284,8 +1292,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1303,7 +1312,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1333,7 +1342,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
 ```{r}
@@ -1366,8 +1375,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1385,7 +1395,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1415,7 +1425,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
 ```{r}
@@ -1430,7 +1440,7 @@ pairwise.t.test(by_run$Num_false_negatives, by_run$Algorithm, paired = T)
 Now I will see if attribute selection can improve the Naive Bayes algorithm (as opposed to the IBk algorithm). The results of the experiment that I have done is shown in *Table \@ref(tab:naive-bayes-attribute-selection-results)*. In this table you can see that the accuracy, the TPR, the TNR and the $F_2$ score are better for the plain algorithm than for the attribute selected algorithms. The AUC is the same. This time I will not test the CfsSubsetEval attribute selection method because it usually (if not always) selects all 9 attributes (can be seen in *Figure \@ref(fig:ibk-attribute-selection-barplot)*). Based on these results I conclude that selecting a subset of attributes for Naive Bayes is not helpfull in classifying the filtered Breast Cancer Wisconsin (Original) Data Set.
 
 ```{r naive-bayes-attribute-selection-results}
-weka.experiment <- read.arff("data/weka_experiment_naive_bayes_attributeSelect.arff.arff")
+weka.experiment <- read.arff("data/weka_experiment_naive_bayes_attributeSelect.arff")
 
 weka.experiment$Algorithm <- factor(
   rep(c("No attribute selection", "Wrapper Best first", "Wrapper exhaustive"), each = 100),
@@ -1447,8 +1457,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1466,7 +1477,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1496,7 +1507,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
 ##### Baggin and Boosting
@@ -1521,8 +1532,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1540,7 +1552,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1560,7 +1572,7 @@ kbl(
   col.names = c("Settings", "Training", "Testing", 
                 "ACC", "TP", "FP", "TN", "FN", 
                 "TPR", "TNR", "AUC", "$F_2$"),
-  caption = "Results of experiment run in Weka Experimenter of the Naive Bayes algorithm using different methods for selecting attributes, the algorithms were used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
+  caption = "Results of experiment run in Weka Experimenter of the Naive Bayes algorithm using plain Naive Bayes as well as Naive Bayes in combination with AdaBoostM1 and a bagging method, the algorithms were used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
   booktabs = T, 
   linesep = "",
   longtable = T,
@@ -1570,12 +1582,20 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
 #### Voting
 
-Now I will try to see if I can get a better performing algorithm by combining different algorithms. I have chosen to use the IBk (KNN = 2), Naive Bayes (useSupervisedDiscretization = True) and the Random Forest Algorithm for this.
+Now I will try to see if I can get a better performing algorithm by combining different algorithms. I have chosen to use the IBk (KNN = 2), Naive Bayes (useSupervisedDiscretization = True) and the Random Forest Algorithm for this. A comparison of the plain (optimized) algorithms for Naive Bayes, IBk and Random Forest and the voting combining these three algorithms is shown in *Table \@ref(tab:voting-results)*. In the table you can see that the voting algorithm does not have the best score for accuracy, number of false negatives or $F_2$ score, but that the AUC score of the voting is the best among these 4 algorithms.
+
+In the t test below the table yo can see that the accuracy of the voting algorithm is significantly different from the Naive Bayes and Random Forest algorithm, but not from the IBk algorithm. So the conclusion that I draw from the t tests in combination with the results table is that the accuracy of the voting algorithm is not significantly worse than any of the other algorithms.
+
+Another thing that can be seen in the t tests below the table is that the AUC score differs significantly between the voting algorithm and the IBk algorithm, but not between voting and the other two algorithms. That combined with the data in the results table tells me that the Voting algorithm is at least significantly better than one of the other algorithms regarding the AUC score.
+
+In respect to the $F_2$ score the voting algorithm only significantly differs from the random forest algorithm, so again I conclude that the the $F_2$ score of voting is not significantly worse than any of the other algorithms.
+
+When looking at the the t tests for the number of false negatives the voting once again only significantly differs from the Random Forest, and once again in respect to the number of false negatives the voting algorithm does not perform significantly worse than any of the other three algorithms.
 
 
 ```{r voting-results}
@@ -1596,8 +1616,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1615,7 +1636,7 @@ by_run <- weka.experiment %>%
   )
 
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
+  dplyr::group_by(Algorithm) %>%
   summarize(
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
@@ -1635,7 +1656,7 @@ kbl(
   col.names = c("Settings", "Training", "Testing", 
                 "ACC", "TP", "FP", "TN", "FN", 
                 "TPR", "TNR", "AUC", "$F_2$"),
-  caption = "Results of experiment run in Weka Experimenter of the Naive Bayes algorithm using different methods for selecting attributes, the algorithms were used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
+  caption = "Results of experiment run in Weka Experimenter of Naive Bayes algorithm, the IBk algorith, the random forest algorithm and a voting algorithm using all three algorithms. The algorithms were used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
   booktabs = T, 
   linesep = "",
   longtable = T,
@@ -1645,7 +1666,7 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
 
 ```{r}
@@ -1657,6 +1678,8 @@ pairwise.t.test(by_run$Num_false_negatives, by_run$Algorithm, paired = T)
 
 
 ##### Voting with cost
+
+Now I will try to lower the number of false negatives of the voting algorithm by using the cost sensitive classifier method in weka. I will use the plain voting compared to cost sensitive learning and cost sensitive classification both with a cost set to 1:5 (FP:FN). The results are shown in *Table \@ref(tab:voting-cost-results)*. In the table it can be seen that cost sensitive learning not only improves the number of false negatives, but does also increase the accuracy and $F_2$ score. In the t test below the table it can be seen that the difference in accuracy, AUC, number of false negative and $F_2$ score all differ significantly between the plain voting and the cost sensitive learning algorithm. Only the AUC score in favor of the plain voting algorithm.
 
 ```{r voting-cost-results}
 weka.experiment <- read.arff("data/weka_experiment_voting_cost.arff")
@@ -1676,8 +1699,9 @@ weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
 
 
 by_run <- weka.experiment %>%
-  group_by(Key_Run, Algorithm) %>%
-  summarise(
+  dplyr::group_by(Key_Run, Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     Algorithm = first(Algorithm),
     Key_Run = first(Key_Run),
     Num_true_positives = sum(Num_true_positives),
@@ -1694,9 +1718,11 @@ by_run <- weka.experiment %>%
     F_2_score = f.2.score(Num_true_positives, Num_false_positives, Num_false_negatives)
   )
 
+
 summarized <- by_run %>%
-  group_by(Algorithm) %>%
-  summarize(
+  dplyr::group_by(Algorithm) %>%
+  dplyr::summarise(
+    .groups = "keep",
     "Training time" = mean(Elapsed_Time_training), 
     "Testing time" = mean(Elapsed_Time_testing), 
     ACC = format(round(mean(Percent_correct), digits = 3), nsmall = 3),
@@ -1709,13 +1735,14 @@ summarized <- by_run %>%
     AUC = format(round(mean(Area_under_ROC), digits = 3), nsmall = 3),
     F2 = format(round(mean(F_2_score), digits = 3), nsmall = 3))
 
+
 kbl(
   subset(summarized),
   row.names = F,
   col.names = c("Settings", "Training", "Testing", 
                 "ACC", "TP", "FP", "TN", "FN", 
                 "TPR", "TNR", "AUC", "$F_2$"),
-  caption = "Results of experiment run in Weka Experimenter of the Naive Bayes algorithm using different methods for selecting attributes, the algorithms were used on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
+  caption = "Results of experiment run in Weka Experimenter of using the classifier on the filtered Breast Cancer Wisconsin (Original) Data Set. The experiment was run using 10-fold cross validation and the iteration was set to 10 repetitions.",
   booktabs = T, 
   linesep = "",
   longtable = T,
@@ -1725,5 +1752,115 @@ kbl(
   kable_styling(latex_options = c("HOLD_position", "striped", "repeat_header")) %>%
   column_spec(1, width = "2.5cm") %>%
   column_spec(c(2:3, 8:11), width = "1cm") %>%
-  footnote(general = c("ACC = accuracy (%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
+  footnote(general = c("ACC = accuracy (\\\\%)", "TP = true positive", "FP = false positive", "TN = true negative", "FN = false negative", "TPR = true positive rate = sensitivity = recall", "TNR = true negative rate = specificity", "AUC = area under the ROC curve", "$F_2$ = the $F_{\\\\beta}$ score with ${\\\\beta} = 2$"), threeparttable = T, general_title = "Column explanation:", escape = F)
 ```
+
+```{r}
+pairwise.t.test(by_run$Percent_correct, by_run$Algorithm, paired = T)
+pairwise.t.test(by_run$Area_under_ROC, by_run$Algorithm, paired = T)
+pairwise.t.test(by_run$F_2_score, by_run$Algorithm, paired = T)
+pairwise.t.test(by_run$Num_false_negatives, by_run$Algorithm, paired = T)
+```
+
+#### ROC and Learning Curve
+
+Now I will make a plot showing the ROC curve of the most optimized classifier. In my case this is going to be the cost sensitive learning algorithm (cost 1:5 for FP:FN) wrapping the voting algorithm. The algorithms that are used for voting are: the IBk (KNN = 2) algorithm, the Naive Bayes (useSupervisedDiscretization = True) and th Random Forest algorithm. The ROC curve is shown in *Figure \@ref(fig:roc-curve)*. The data that this figure is based on is from running this algorithm in the Weka Explorer using 10-fold cross validation and saving the result to an arff file. I find this ROC curve quite satisfying. The curve gets pretty close to the (0, 1) coordinate which would be a perfect classifier. The place that is closest to the (0, 1) coordinate favors TPR over FPR. When looking at the figure it even looks like the TPR will be 1 when the false positive rate is around 0.2. If that is the case that would mean the algorithm could correctly classify all malignant samples, while misclassifying 20% of the benign samples.
+
+```{r roc-curve, fig.cap="ROC curve of most optimized classifier algorithm use on the filtered Breast Cancer Wisconsin (Original) Data Set. The algorithm that is used is a classifier made and run in the Weka Explorer: the cost sensitive learning algorithm (cost 1:5 for FP:FN) wrapping the voting algorithm. The algorithms that are used for voting are: the IBk (KNN = 2) algorithm, the Naive Bayes (useSupervisedDiscretization = True) and th Random Forest algorithm."}
+
+ROC <- read.arff("data/ROC.arff")
+
+colors <- colorblind_pal()(3);
+
+ggplot(ROC, aes(x = `False Positive Rate`, y =`True Positive Rate`)) +
+  geom_point(aes(color = Threshold)) +
+  labs(title = "ROC curve") +
+  scale_colour_gradient(
+  low = colors[3],
+  high = colors[2],
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "colour"
+)
+
+```
+
+Now I will run the algorithm while using different percentages of the training set. I will run this in the Weka Experimenter, wrapping the algorithm in FilteredClassifier with Resample as a filter. In Resample I will set the *noReplacement* setting to True, to disable replacing while sampling. I will set the sampleSizePercent to: 1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100. I will run these tests using 10-fold cross-validation and 10 repititions. The learning curves for accuracy, AUC, $F_2$ score and number of false negatives is shown in *Figure \@ref(fig:learning-curve)*. From these learning curves it becomes clear that only a couple of instances are needed for training the classifier to get a pretty high score. But then again OneR also had an accuracy above 90%. But the number of false negatives definitely seems to go down until 80% mark. So I think it is reasonable to assume that we need at least 80% of the 630 instances that we have to get a classifier that avoids classifying malignant as benign.
+
+```{r learning-curve, fig.cap="Different quality metrics scored for different percentages of the trainingset used. Results are from the optimal algorithm run in the Weka Experimenter using 10-fold cross validation and number of repititions set to 10"}
+weka.experiment <- read.arff("data/weka_experiment_learing_curve.arff")
+
+weka.experiment$percent_used <- rep(c(seq(from = 100, to = 5, length.out = 20), 1), each = 100)
+
+weka.experiment$F_2_score <- apply(weka.experiment, 1, function(row) {
+  f.2.score(
+    as.numeric(row["Num_true_positives"]), 
+    as.numeric(row["Num_false_positives"]), 
+    as.numeric(row["Num_false_negatives"]))
+  }
+)
+
+by_run <- weka.experiment %>%
+  dplyr::group_by(Key_Run, percent_used) %>%
+  dplyr::summarise(
+    .groups = "keep",
+    percent_used = first(percent_used),
+    Key_Run = first(Key_Run),
+    Num_true_positives = sum(Num_true_positives),
+    Num_false_positives = sum(Num_false_positives),
+    Num_false_negatives = sum(Num_false_negatives),
+    Num_true_negatives = sum(Num_true_negatives),
+    N = sum(Num_true_positives, Num_false_positives, Num_false_negatives,Num_true_negatives),
+    Percent_correct = ((Num_true_positives + Num_true_negatives) / N) * 100,
+    True_positive_rate = (Num_true_positives / (Num_true_positives + Num_false_negatives)),
+    True_negative_rate = (Num_true_negatives / (Num_true_negatives + Num_false_positives)),
+    Elapsed_Time_training = sum(Elapsed_Time_training),
+    Elapsed_Time_testing = sum(Elapsed_Time_testing),
+    Area_under_ROC = mean(Area_under_ROC),
+    F_2_score = f.2.score(Num_true_positives, Num_false_positives, Num_false_negatives)
+  )
+
+summarized <- weka.experiment %>%
+  dplyr::group_by(percent_used) %>%
+  dplyr::summarise(
+    .groups = "keep",
+    "Training time" = mean(Elapsed_Time_training), 
+    "Testing time" = mean(Elapsed_Time_testing), 
+    ACC = mean(Percent_correct),
+    TP = mean(Num_true_positives), 
+    FP = mean(Num_false_positives),
+    TN = mean(Num_true_negatives),
+    FN = mean(Num_false_negatives),
+    TPR = mean(True_positive_rate),
+    TNR = mean(True_negative_rate),
+    AUC = mean(Area_under_ROC),
+    F2 = mean(F_2_score))
+
+
+data <- subset(summarized, select = c(percent_used, ACC, AUC, F2, FN))
+long.data <- pivot_longer(data, 2:5, names_to = "quality_metric")
+
+long.data$quality_metric <- factor(long.data$quality_metric) 
+levels(long.data$quality_metric) = c(ACC=TeX("Accuracy (%)"), AUC=TeX("AUC"), F2=TeX('$F_2$ score'), FN=TeX("Number of false negatives"))
+
+ggplot(long.data, aes(x = percent_used, y=value)) +
+  geom_point() +
+  geom_smooth(
+    method = loess, 
+    se=FALSE,
+     formula= y ~ x
+  ) +
+  expand_limits(x = 0, y = 0) +
+  facet_wrap(
+    quality_metric ~ .,
+    ncol =2,
+    scales = "free",
+    labeller = label_parsed
+  ) +
+  labs(
+    title = "Learning curves",
+    x = "Percentage of training set used"
+  )
+```
+
